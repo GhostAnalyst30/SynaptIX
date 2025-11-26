@@ -1,0 +1,9 @@
+README.md
+setup.py
+synaptix/__init__.py
+synaptix/intelligenceartificial.py
+synaptix.egg-info/PKG-INFO
+synaptix.egg-info/SOURCES.txt
+synaptix.egg-info/dependency_links.txt
+synaptix.egg-info/requires.txt
+synaptix.egg-info/top_level.txt

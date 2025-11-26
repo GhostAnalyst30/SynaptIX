@@ -1,0 +1,98 @@
+Metadata-Version: 2.4
+Name: synaptix
+Version: 0.1.0
+Summary: Librería de Inteligencia Artificial para Python (ML, DL, Visión, NLP, IA Clásica).
+Home-page: https://github.com/Immanuel3008/SynaptIX
+Author: Emmanuel Ascendra Perez
+Author-email: ascendraemmanuel@gmail.com
+Project-URL: Repositorio, https://github.com/Immanuel3008/SynaptIX
+Project-URL: Reportar Bugs, https://github.com/Immanuel3008/SynaptIX/issues
+Project-URL: Documentación, https://github.com/Immanuel3008/SynaptIX/wiki
+Keywords: machine learning,deep learning,artificial intelligence,data science,computer vision,nlp,synaptixx
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: pandas>=1.3.0
+Requires-Dist: scipy>=1.7.0
+Requires-Dist: matplotlib>=3.4.0
+Provides-Extra: ml
+Requires-Dist: scikit-learn>=1.0.0; extra == "ml"
+Requires-Dist: statsmodels>=0.13.0; extra == "ml"
+Provides-Extra: dl
+Requires-Dist: tensorflow>=2.5.0; extra == "dl"
+Provides-Extra: vision
+Requires-Dist: opencv-python>=4.5.0; extra == "vision"
+Provides-Extra: nlp
+Requires-Dist: nltk>=3.6.0; extra == "nlp"
+Requires-Dist: scikit-learn>=1.0.0; extra == "nlp"
+Provides-Extra: viz
+Requires-Dist: seaborn>=0.11.0; extra == "viz"
+Requires-Dist: plotly>=5.0.0; extra == "viz"
+Provides-Extra: all
+Requires-Dist: scikit-learn>=1.0.0; extra == "all"
+Requires-Dist: statsmodels>=0.13.0; extra == "all"
+Requires-Dist: tensorflow>=2.5.0; extra == "all"
+Requires-Dist: opencv-python>=4.5.0; extra == "all"
+Requires-Dist: nltk>=3.6.0; extra == "all"
+Requires-Dist: seaborn>=0.11.0; extra == "all"
+Requires-Dist: plotly>=5.0.0; extra == "all"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: project-url
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+📦 Descripción para PyPI (Plantilla Profesional)
+
+StatsLibX es un paquete de Python diseñado para proporcionar una solución sencilla, eficiente y flexible para manejar volumenes de datos.
+
+Este proyecto surge con la idea de ofrecer una alternativa moderna, intuitiva y ligera que permita a desarrolladores y entusiastas integrar la estadistica descriptiva e inferencial sin complicaciones, con multiples funcionalidades y utilidades pensadas para el futuro.
+
+✨ Características principales
+
+⚡ Rápido y eficiente: optimizado para ofrecer un rendimiento suave incluso en tareas exigentes.
+
+🧩 Fácil de usar: una API limpia para que empieces en segundos.
+
+🔧 Altamente extensible: personalízalo según tus necesidades.
+
+📚 Documentación clara: ejemplos simples y prácticos.
+
+🔮 Diseñado con visión a futuro: construido para escalar y adaptarse.
+
+🚀 Ejemplo rápido
+```python
+from statslibx import DescriptiveStats, InferentialStats, UtilsStats
+
+stats = DescriptiveStats(data) # InferentialStats(data), UtilsStats()
+stats.help()
+```
+
+📦 Instalación
+```bash
+pip install statslibx
+```
+
+🤝 Contribuciones
+
+¡Todas las mejoras e ideas son bienvenidas! 
+
+E-mail: ascendraemmanuel@gmail.com

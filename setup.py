@@ -8,7 +8,7 @@ except FileNotFoundError:
     long_description = "SynaptixX – Librería unificada de IA, ML, DL, Visión y NLP para Python."
 
 setup(
-    name="synaptix ",  # ← más único para PyPI
+    name="synaptix",  # ← más único para PyPI
     version="0.1.0",
     author="Emmanuel Ascendra Perez",
     author_email="ascendraemmanuel@gmail.com",
@@ -30,7 +30,6 @@ setup(
         "Intended Audience :: Science/Research",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Scientific/Engineering :: Mathematics",
-        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
