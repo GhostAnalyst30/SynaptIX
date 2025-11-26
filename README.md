@@ -1,36 +1,61 @@
-📦 Descripción para PyPI (Plantilla Profesional)
+# 🤖 SynaptIX – Intelligence Module
 
-StatsLibX es un paquete de Python diseñado para proporcionar una solución sencilla, eficiente y flexible para manejar volumenes de datos.
+SynaptIX es una librería moderna de Inteligencia Artificial diseñada para ofrecer una API unificada y sencilla que integra **Machine Learning**, **Deep Learning**, **Visión por Computador**, **Procesamiento del Lenguaje Natural** e **IA clásica**, todo dentro de una sola clase: `Intelligence`.
 
-Este proyecto surge con la idea de ofrecer una alternativa moderna, intuitiva y ligera que permita a desarrolladores y entusiastas integrar la estadistica descriptiva e inferencial sin complicaciones, con multiples funcionalidades y utilidades pensadas para el futuro.
+Este módulo busca ser una alternativa ligera, intuitiva y lista para escalar hacia proyectos profesionales y académicos.
 
-✨ Características principales
+---
 
-⚡ Rápido y eficiente: optimizado para ofrecer un rendimiento suave incluso en tareas exigentes.
+## ✨ Características principales
 
-🧩 Fácil de usar: una API limpia para que empieces en segundos.
+### 🔹 Machine Learning
+Métodos clásicos y ampliamente usados:
+- `linear_regression()`
+- `logistic_regression()`
+- `svm_classifier()`
+- `kmeans()`
 
-🔧 Altamente extensible: personalízalo según tus necesidades.
+### 🔹 Deep Learning
+Modelos implementados de forma sencilla:
+- `dense_network()`
+- `cnn()`
 
-📚 Documentación clara: ejemplos simples y prácticos.
+### 🔹 Visión por Computador
+Funciones esenciales para análisis y filtrado:
+- `detect_edges()`
+- `image_features()`
 
-🔮 Diseñado con visión a futuro: construido para escalar y adaptarse.
+### 🔹 Procesamiento del Lenguaje Natural (NLP)
+Herramientas básicas para texto:
+- `tokenize()`
+- `vectorize_tfidf()`
 
-🚀 Ejemplo rápido
+### 🔹 IA Clásica
+Técnicas inspiradas en métodos tradicionales:
+- `a_star()`
+- `genetic_algorithm()`
+
+---
+
+## 🚀 Ejemplo rápido de uso
+
 ```python
-from statslibx import DescriptiveStats, InferentialStats, UtilsStats
+from synaptix import Intelligence
 
-stats = DescriptiveStats(data) # InferentialStats(data), UtilsStats()
-stats.help()
-```
+ai = Intelligence(data)
+
+ai.linear_regression()      # Machine Learning
+ai.dense_network()          # Deep Learning
+ai.detect_edges()           # Visión artificial
+ai.tokenize()               # NLP
+ai.a_star()                 # IA clásica
+
+ai.help()                   # Ver documentación interna
+
 
 📦 Instalación
 ```bash
 pip install statslibx
 ```
-
-🤝 Contribuciones
-
-¡Todas las mejoras e ideas son bienvenidas! 
-
-E-mail: ascendraemmanuel@gmail.com
+🤝 Contribuciones ¡Todas las mejoras e ideas son bienvenidas! 
+E-mail: ascendraemmanuel@gmail.com Puedes ajustar ese readme
