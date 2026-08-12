@@ -3,14 +3,15 @@ SynaptIX - Librería integral de Machine Learning para Python.
 Autor: Emmanuel Ascendra
 
 Submódulos:
+- ``synaptix.pipeline``        : AutoPipeline y Pipeline declarativo (ML automático).
 - ``synaptix.preprocessing``   : limpieza, escalado, codificación, outliers.
-- ``synaptix.supervised``      : regresión y clasificación (15 modelos).
+- ``synaptix.supervised``      : regresión, clasificación y modelos bayesianos.
 - ``synaptix.unsupervised``    : clustering y reducción de dimensionalidad.
 - ``synaptix.reinforcement``   : Q-Learning, SARSA, DQN y entorno GridWorld.
 - ``synaptix.neural``          : redes MLP, CNN y LSTM (requiere tensorflow).
 - ``synaptix.metrics``         : métricas de regresión/clasificación/clustering.
 - ``synaptix.model_selection`` : validación cruzada, GridSearch, compare_models.
-- ``synaptix.visualization``   : matriz de confusión, ROC, curvas, clusters.
+- ``synaptix.visualization``   : gráficas EDA y de modelos.
 - ``synaptix.datasets``        : datasets de ejemplo incluidos.
 - ``synaptix.legacy``          : API clásica v0.x (compatibilidad).
 
@@ -27,12 +28,13 @@ Ejemplo rápido
 >>> model.evaluate(X_test, y_test)
 """
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 __author__ = "Emmanuel Ascendra"
 
 from . import (
     metrics,
     model_selection,
+    pipeline,
     preprocessing,
     supervised,
     unsupervised,
@@ -41,6 +43,7 @@ from . import (
 )
 from .base import SynaptixModel
 from .datasets import list_datasets, load_dataset
+from .pipeline import AutoPipeline, Pipeline
 
 # Clases legacy sin dependencias pesadas
 from .legacy import (
@@ -52,6 +55,7 @@ from .legacy import (
 
 __all__ = [
     # Submódulos
+    "pipeline",
     "preprocessing",
     "supervised",
     "unsupervised",
@@ -64,6 +68,8 @@ __all__ = [
     "legacy",
     # Utilidades
     "SynaptixModel",
+    "AutoPipeline",
+    "Pipeline",
     "load_dataset",
     "list_datasets",
     # Legacy
@@ -102,8 +108,9 @@ def welcome():
     print("Librería integral de Machine Learning para Python")
     print(f"Autor: {__author__}\n")
     print("Submódulos disponibles:")
+    print("  - synaptix.pipeline        : AutoPipeline (ML automático)")
     print("  - synaptix.preprocessing   : limpieza y transformación de datos")
-    print("  - synaptix.supervised      : regresión y clasificación")
+    print("  - synaptix.supervised      : regresión, clasificación y bayesianos")
     print("  - synaptix.unsupervised    : clustering y reducción de dimensión")
     print("  - synaptix.reinforcement   : aprendizaje por refuerzo")
     print("  - synaptix.neural          : redes neuronales (MLP, CNN, LSTM)")

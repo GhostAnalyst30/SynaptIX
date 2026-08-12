@@ -41,7 +41,7 @@ def check(name):
 def test_import():
     import synaptix as sx
 
-    assert sx.__version__ == "0.1.6"
+    assert sx.__version__ == "0.1.7"
     assert hasattr(sx, "supervised")
     assert hasattr(sx, "preprocessing")
 
@@ -353,6 +353,147 @@ def test_visualization_extra():
 
     resultados = model_report(reg, X_reg, y_reg)
     assert resultados["R2"] > 0.9
+
+
+@check("supervised: modelos bayesianos (sklearn) con predict_interval")
+def test_bayesian():
+    import synaptix as sx
+    from synaptix.supervised import (
+        ARDRegression,
+        BayesianRidgeRegression,
+        BernoulliNB,
+        ComplementNB,
+        GaussianProcessClassifier,
+        GaussianProcessRegressor,
+        MultinomialNB,
+    )
+    from synaptix.preprocessing import train_test_split
+
+    rng = np.random.default_rng(42)
+    X = rng.normal(0, 1, (200, 3))
+    y = 2 * X[:, 0] - X[:, 1] + rng.normal(0, 0.3, 200)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+
+    for model_class in (BayesianRidgeRegression, ARDRegression, GaussianProcessRegressor):
+        model = model_class().fit(X_train, y_train)
+        results = model.evaluate(X_test, y_test, verbose=False)
+        assert results["R2"] > 0.8, f"{model.name}: {results['R2']}"
+        media, low, high = model.predict_interval(X_test, std=2)
+        assert (low <= media).all() and (media <= high).all()
+        cobertura = ((y_test >= low) & (y_test <= high)).mean()
+        assert cobertura > 0.7, f"{model.name}: cobertura {cobertura}"
+
+    # Clasificación bayesiana
+    iris = sx.load_dataset("iris")
+    X_iris = iris.select_dtypes(include=[np.number])
+    y_iris = iris.iloc[:, -1]
+
+    gpc = GaussianProcessClassifier().fit(X_iris, y_iris)
+    assert gpc.evaluate(X_iris, y_iris, verbose=False)["accuracy"] > 0.9
+
+    # Variantes NB (requieren features no negativas -> usar valores crudos de iris)
+    for nb_class in (MultinomialNB, ComplementNB):
+        nb = nb_class().fit(X_iris, y_iris)
+        assert nb.evaluate(X_iris, y_iris, verbose=False)["accuracy"] > 0.5
+
+    # BernoulliNB necesita un umbral de binarización acorde a los datos
+    bnb = BernoulliNB(binarize=float(X_iris.values.mean())).fit(X_iris, y_iris)
+    assert bnb.evaluate(X_iris, y_iris, verbose=False)["accuracy"] > 0.5
+
+
+@check("supervised: modelos PyMC (solo si pymc está instalado)")
+def test_bayesian_pymc():
+    try:
+        import pymc  # noqa: F401
+    except ImportError:
+        print("        (pymc no instalado; se omite)")
+        return
+
+    from synaptix.supervised import PyMCLinearRegression
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(0, 1, (100, 2))
+    y = 3 * X[:, 0] + rng.normal(0, 0.2, 100)
+
+    model = PyMCLinearRegression(draws=300, tune=300, chains=2)
+    model.fit(X, y)
+    media, low, high = model.predict_interval(X, hdi=0.94)
+    assert (low <= media).all() and (media <= high).all()
+    assert model.evaluate(X, y, verbose=False)["R2"] > 0.8
+
+
+@check("pipeline: AutoPipeline fit/predict/report con penguins")
+def test_auto_pipeline():
+    import synaptix as sx
+
+    df = sx.load_dataset("penguins")
+
+    pipe = sx.AutoPipeline(cv=3, verbose=False)
+    pipe.fit(df, target="species")
+
+    assert pipe.task_ == "classification"
+    assert pipe.ranking_ is not None and len(pipe.ranking_) >= 5
+    assert pipe.results_["accuracy"] > 0.9, pipe.results_
+
+    # Predicción sobre datos crudos nuevos (con nulos y categóricas)
+    nuevos = df.drop(columns="species").head(10)
+    predicciones = pipe.predict(nuevos)
+    assert len(predicciones) == 10
+
+    reporte = pipe.report(plot=False)
+    assert reporte == pipe.results_
+
+    # Persistencia del pipeline completo
+    pipe.save("_tmp_pipe.pkl")
+    cargado = sx.AutoPipeline.load("_tmp_pipe.pkl")
+    assert (cargado.predict(nuevos) == predicciones).all()
+    os.remove("_tmp_pipe.pkl")
+
+    # Detección de regresión
+    reg_df = sx.load_dataset("iris")
+    pipe_reg = sx.AutoPipeline(cv=3, tune=False, verbose=False,
+                               models=["linear", "random_forest"])
+    pipe_reg.fit(reg_df.select_dtypes(include=[np.number]), target=reg_df.select_dtypes(include=[np.number]).columns[0])
+    assert pipe_reg.task_ == "regression"
+
+
+@check("pipeline: Pipeline declarativo por pasos")
+def test_declarative_pipeline():
+    import synaptix as sx
+    from synaptix.pipeline import Pipeline
+
+    df = sx.load_dataset("penguins")
+
+    # Modelo explícito con params propios + tune con rejilla por defecto
+    pipe = Pipeline(
+        [
+            "clean",
+            ("model", "random_forest", {"n_estimators": 50}),
+            "tune",
+            "evaluate",
+        ],
+        cv=3,
+        verbose=False,
+    )
+    pipe.fit(df, target="species")
+    assert pipe.results_["accuracy"] > 0.9
+    assert pipe.best_params_ is not None
+    assert len(pipe.predict(df.drop(columns="species").head(5))) == 5
+
+    # Selección automática de modelo + outliers
+    pipe_auto = Pipeline(
+        [
+            ("outliers", {"method": "iqr", "threshold": 3.0}),
+            "clean",
+            "model",
+            "evaluate",
+        ],
+        cv=3,
+        verbose=False,
+    )
+    pipe_auto.fit(df, target="species")
+    assert pipe_auto.ranking_ is not None
+    assert pipe_auto.results_["accuracy"] > 0.85
 
 
 @check("legacy: imports y compatibilidad")

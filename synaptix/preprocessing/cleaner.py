@@ -50,6 +50,8 @@ class DataCleaner:
         self.imputer_: Optional[Imputer] = None
         self.encoder_: Optional[Encoder] = None
         self.scaler_: Optional[Scaler] = None
+        self._scaled_cols: list = []
+        self._output_cols: list = []
 
     def analyze(self, df: pd.DataFrame, verbose: bool = True) -> dict:
         """Analiza el DataFrame y reporta problemas de calidad.
@@ -164,8 +166,58 @@ class DataCleaner:
             if num_cols:
                 self.scaler_ = Scaler(method=self.scale_method)
                 result[num_cols] = self.scaler_.fit_transform(result[num_cols])
+                self._scaled_cols = num_cols
+
+        self._output_cols = list(result.columns)
 
         if y is not None:
             result[target] = y.values
 
         return result
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Aplica a datos nuevos las transformaciones ya ajustadas por :meth:`clean`.
+
+        Usa el imputador, codificador y escalador aprendidos previamente,
+        y alinea las columnas del resultado con las del entrenamiento
+        (rellena con 0 las categorías one-hot que no aparezcan).
+
+        Parameters
+        ----------
+        df : DataFrame
+            Datos nuevos con las mismas columnas originales (sin el target).
+
+        Returns
+        -------
+        DataFrame
+            Datos transformados, con las mismas columnas que produjo
+            :meth:`clean` en el entrenamiento.
+
+        Ejemplo
+        -------
+        >>> cleaner = DataCleaner()
+        >>> df_train = cleaner.clean(df, target="precio")
+        >>> X_nuevo = cleaner.transform(df_nuevo)   # datos de producción
+        """
+        if self.imputer_ is None:
+            raise RuntimeError("Llama a clean(df) primero para ajustar el cleaner.")
+
+        result = df.copy()
+        result = self.imputer_.transform(result)
+
+        if self.encoder_ is not None:
+            result = self.encoder_.transform(result)
+
+        if self.scaler_ is not None and self._scaled_cols:
+            present = [col for col in self._scaled_cols if col in result.columns]
+            if present != self._scaled_cols:
+                missing = set(self._scaled_cols) - set(present)
+                for col in missing:
+                    result[col] = 0.0
+            result[self._scaled_cols] = self.scaler_.transform(result[self._scaled_cols])
+
+        # Alinear con las columnas del entrenamiento
+        for col in self._output_cols:
+            if col not in result.columns:
+                result[col] = 0.0
+        return result[self._output_cols]

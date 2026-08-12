@@ -5,6 +5,7 @@
 ```bash
 pip install synaptix            # núcleo (sklearn incluido)
 pip install synaptix[dl]        # + tensorflow (redes neuronales y DQN)
+pip install synaptix[bayes]     # + pymc (inferencia bayesiana completa)
 pip install synaptix[all]       # todo
 ```
 
@@ -32,8 +33,9 @@ model.evaluate(X_test, y_test, plot=True)  # métricas + matriz de confusión
 
 | Módulo | Contenido |
 |---|---|
-| `synaptix.preprocessing` | `Scaler`, `Encoder`, `Imputer`, `DataCleaner`, `detect_outliers`, `remove_outliers`, `train_test_split` |
-| `synaptix.supervised` | 8 regresores (lineal, ridge, lasso, árbol, random forest, gradient boosting, SVR, KNN) y 7 clasificadores (logística, árbol, random forest, gradient boosting, SVM, KNN, naive bayes) |
+| `synaptix.pipeline` | `AutoPipeline` (ML automático de principio a fin) y `Pipeline` declarativo por pasos |
+| `synaptix.preprocessing` | `Scaler`, `Encoder`, `Imputer`, `DataCleaner` (con `transform` para datos nuevos), `detect_outliers`, `remove_outliers`, `train_test_split` |
+| `synaptix.supervised` | 8 regresores, 7 clasificadores y 9 modelos bayesianos (BayesianRidge, ARD, procesos gaussianos, variantes de Naive Bayes, PyMC) |
 | `synaptix.unsupervised` | `KMeans` (con codo y silhouette), `DBSCAN`, `HierarchicalClustering`, `GaussianMixture`, `PCA`, `TSNE` |
 | `synaptix.reinforcement` | `QLearningAgent`, `SARSAAgent`, `DQNAgent`, entorno `GridWorld` |
 | `synaptix.neural` | `MLP`, `CNN`, `LSTMNet` sobre Keras (requiere `synaptix[dl]`) |
@@ -44,6 +46,62 @@ model.evaluate(X_test, y_test, plot=True)  # métricas + matriz de confusión
 | `synaptix.legacy` | API clásica v0.x (`IntelligenceArtificial`, `MachineLearning`, ...) |
 
 ## Ejemplos por área
+
+### AutoPipeline: ML en una línea (para empezar sin experiencia)
+
+```python
+import synaptix as sx
+
+df = sx.load_dataset("penguins")
+
+pipe = sx.AutoPipeline()          # el sistema se encarga de los parámetros
+pipe.fit(df, target="species")    # limpia, compara 7 modelos, ajusta y evalúa
+pipe.report()                     # ranking + métricas + matriz de confusión
+
+predicciones = pipe.predict(df_nuevo)   # acepta datos crudos (con nulos)
+pipe.save("mi_pipeline.pkl")
+```
+
+Todo es configurable: `AutoPipeline(models=["random_forest", "svm"], cv=10, tune=False, scale_method="robust", param_grids={"random_forest": {"n_estimators": [300]}})`.
+
+También hay un `Pipeline` declarativo por pasos, donde el sistema rellena los parámetros de cada paso:
+
+```python
+from synaptix.pipeline import Pipeline
+
+pipe = Pipeline([
+    "clean",                            # DataCleaner con defaults
+    ("outliers", {"method": "iqr"}),    # params propios opcionales
+    ("model", "random_forest"),         # o "model" solo = elegir automático
+    "tune",                             # rejilla por defecto del modelo
+    ("evaluate", {"plot": True}),
+])
+pipe.fit(df, target="species")
+```
+
+### Modelos bayesianos (con incertidumbre)
+
+```python
+from synaptix.supervised import BayesianRidgeRegression, GaussianProcessRegressor
+
+model = BayesianRidgeRegression()
+model.fit(X_train, y_train)
+
+# Además de la predicción puntual, un intervalo de incertidumbre:
+media, inferior, superior = model.predict_interval(X_test, std=2)  # ~95%
+```
+
+Con el extra `[bayes]` (PyMC) se obtiene la distribución posterior completa:
+
+```python
+from synaptix.supervised import PyMCLinearRegression
+
+model = PyMCLinearRegression(draws=1000)
+model.fit(X_train, y_train)                       # inferencia MCMC
+media, low, high = model.predict_interval(X_test, hdi=0.94)
+model.summary()                                   # posteriores de cada parámetro
+model.plot_posterior()
+```
 
 ### Preprocesamiento
 

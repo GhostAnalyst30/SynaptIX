@@ -34,7 +34,7 @@ export default function Navbar() {
             github
           </a>
           <span className="hidden rounded border border-line px-2.5 py-1 text-xs text-dim sm:block">
-            v0.1.6
+            v0.1.7
           </span>
         </div>
       </nav>

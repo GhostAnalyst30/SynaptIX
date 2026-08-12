@@ -5,6 +5,13 @@ import Link from "next/link";
 
 const MODULES = [
   {
+    slug: "pipeline",
+    name: "pipeline",
+    tagline: "AutoML para empezar ya",
+    items: ["AutoPipeline", "Pipeline por pasos", "auto-tuning"],
+    accent: "text-volt",
+  },
+  {
     slug: "preprocessing",
     name: "preprocessing",
     tagline: "Limpieza y transformación",
@@ -14,8 +21,8 @@ const MODULES = [
   {
     slug: "supervised",
     name: "supervised",
-    tagline: "Regresión y clasificación",
-    items: ["RandomForest", "GradientBoosting", "SVM", "KNN", "+11 más"],
+    tagline: "Regresión, clasificación y bayesianos",
+    items: ["RandomForest", "SVM", "BayesianRidge", "PyMC", "+20 más"],
     accent: "text-volt",
   },
   {

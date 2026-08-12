@@ -119,7 +119,7 @@ export default function Hero() {
             transition={{ duration: 0.5 }}
             className="mb-5 inline-block rounded-full border border-line px-3 py-1 font-mono text-xs text-volt"
           >
-            v0.1.6 — supervisado · no supervisado · refuerzo · redes neuronales
+            v0.1.7 — supervisado · bayesiano · refuerzo · redes neuronales · AutoML
           </motion.p>
 
           <motion.h1

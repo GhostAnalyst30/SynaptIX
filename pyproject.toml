@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synaptix"
-version = "0.1.6"
+version = "0.1.7"
 description = "Librería integral de Machine Learning para Python: supervisado, no supervisado, refuerzo, redes neuronales y preprocesamiento."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -46,10 +46,12 @@ Documentacion = "https://github.com/GhostAnalyst30/SynaptIX/wiki"
 
 [project.optional-dependencies]
 dl = ["tensorflow>=2.12.0"]
+bayes = ["pymc>=5.0.0"]
 nlp = ["nltk>=3.6.0"]
 viz = ["seaborn>=0.11.0", "plotly>=5.0.0"]
 all = [
     "tensorflow>=2.12.0",
+    "pymc>=5.0.0",
     "nltk>=3.6.0",
     "seaborn>=0.11.0",
     "plotly>=5.0.0",

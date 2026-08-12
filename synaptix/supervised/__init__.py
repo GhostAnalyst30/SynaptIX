@@ -10,17 +10,32 @@ Clasificación:
     LogisticRegression, DecisionTreeClassifier, RandomForestClassifier,
     GradientBoostingClassifier, SVMClassifier, KNNClassifier, NaiveBayes
 
+Bayesianos (con incertidumbre en las predicciones):
+    BayesianRidgeRegression, ARDRegression, GaussianProcessRegressor,
+    GaussianProcessClassifier, MultinomialNB, BernoulliNB, ComplementNB
+    PyMCLinearRegression, PyMCLogisticRegression (requieren synaptix[bayes])
+
 Todos comparten la API: fit / predict / evaluate / summary / save / load.
 
 Ejemplo
 -------
->>> from synaptix.supervised import LogisticRegression
->>> from synaptix.preprocessing import train_test_split
->>> model = LogisticRegression()
+>>> from synaptix.supervised import BayesianRidgeRegression
+>>> model = BayesianRidgeRegression()
 >>> model.fit(X_train, y_train)
->>> resultados = model.evaluate(X_test, y_test, plot=True)
+>>> media, inferior, superior = model.predict_interval(X_test, std=2)
 """
 
+from .bayesian import (
+    ARDRegression,
+    BayesianRidgeRegression,
+    BernoulliNB,
+    ComplementNB,
+    GaussianProcessClassifier,
+    GaussianProcessRegressor,
+    MultinomialNB,
+    PyMCLinearRegression,
+    PyMCLogisticRegression,
+)
 from .classification import (
     DecisionTreeClassifier,
     GradientBoostingClassifier,
@@ -59,4 +74,14 @@ __all__ = [
     "SVMClassifier",
     "KNNClassifier",
     "NaiveBayes",
+    # Bayesianos
+    "BayesianRidgeRegression",
+    "ARDRegression",
+    "GaussianProcessRegressor",
+    "GaussianProcessClassifier",
+    "MultinomialNB",
+    "BernoulliNB",
+    "ComplementNB",
+    "PyMCLinearRegression",
+    "PyMCLogisticRegression",
 ]

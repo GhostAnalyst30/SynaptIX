@@ -16,6 +16,76 @@ export type DocModule = {
 
 export const MODULES: DocModule[] = [
   {
+    slug: "pipeline",
+    name: "synaptix.pipeline",
+    title: "Pipelines automáticos",
+    intro:
+      "Para usuarios sin experiencia: AutoPipeline hace todo el proceso solo (limpiar, comparar modelos, ajustar hiperparámetros, evaluar) y Pipeline permite declarar los pasos dejando que el sistema rellene los parámetros. Todo es modificable en código.",
+    sections: [
+      {
+        heading: "AutoPipeline: ML en una llamada",
+        body: "fit(df, target) detecta la tarea (clasificación o regresión), limpia los datos con DataCleaner, compara 7 modelos con validación cruzada, ajusta los hiperparámetros del ganador con GridSearch usando rejillas por defecto, y evalúa en un set de prueba reservado. predict() acepta datos crudos nuevos (con nulos y categóricas) porque reaplica la misma limpieza.",
+        code: `import synaptix as sx
+
+df = sx.load_dataset("penguins")
+
+pipe = sx.AutoPipeline()
+pipe.fit(df, target="species")
+# [1/5] Tarea detectada: classification
+# [2/5] Datos limpios: 344 filas, 9 features
+# [3/5] 7 modelos comparados (5 folds). Mejor: logistic (accuracy=0.9927)
+# [4/5] Hiperparámetros ajustados: {'C': 1.0}
+# [5/5] Evaluación final (accuracy en test): 0.9855
+
+pipe.report()                    # ranking + métricas + gráficos
+predicciones = pipe.predict(df_nuevo)   # datos crudos
+pipe.save("mi_pipeline.pkl")     # limpieza + modelo, todo junto`,
+        codeTitle: "auto_pipeline.py",
+      },
+      {
+        heading: "Todo configurable por parámetros",
+        body: "El sistema elige valores sensatos, pero cada etapa se puede controlar: subconjunto de modelos, folds, escalado, imputación, o rejillas de hiperparámetros propias.",
+        code: `pipe = sx.AutoPipeline(
+    task="classification",        # o None para detectar solo
+    models=["random_forest", "svm", "gradient_boosting"],
+    cv=10,                        # folds de validación cruzada
+    tune=True,                    # False = sin GridSearch
+    test_size=0.2,
+    impute_strategy="median",     # mean | median | most_frequent
+    scale_method="robust",        # standard | minmax | robust | None
+    param_grids={                 # sobreescribir rejillas por modelo
+        "random_forest": {"n_estimators": [300, 500]},
+    },
+)
+pipe.fit(df, target="species")
+
+pipe.ranking_        # DataFrame con la comparación de modelos
+pipe.best_model_     # el modelo ganador (API SynaptIX normal)
+pipe.best_params_    # hiperparámetros elegidos`,
+        codeTitle: "configuracion.py",
+      },
+      {
+        heading: "Pipeline declarativo por pasos",
+        body: "Para usuarios intermedios: se listan los pasos del proceso y el sistema rellena los parámetros de cada uno. Cada paso acepta overrides. Pasos soportados: clean, outliers, model (nombre o automático), tune y evaluate.",
+        code: `from synaptix.pipeline import Pipeline
+
+pipe = Pipeline([
+    "clean",                              # DataCleaner con defaults
+    ("outliers", {"method": "iqr"}),      # params propios opcionales
+    ("model", "random_forest"),           # o "model" solo = automático
+    "tune",                               # rejilla por defecto del modelo
+    ("evaluate", {"plot": True}),
+])
+pipe.fit(df, target="species")
+
+pipe.results_        # métricas del set de prueba
+pipe.best_params_    # parámetros elegidos en el paso tune
+pipe.predict(df_nuevo)`,
+        codeTitle: "declarativo.py",
+      },
+    ],
+  },
+  {
     slug: "preprocessing",
     name: "synaptix.preprocessing",
     title: "Preprocesamiento de datos",
@@ -71,7 +141,7 @@ X_train, X_test, y_train, y_test = train_test_split(
     name: "synaptix.supervised",
     title: "Aprendizaje supervisado",
     intro:
-      "Quince modelos de regresión y clasificación que comparten exactamente la misma API: fit, predict, evaluate, summary, save y load. Aceptan DataFrames de pandas, arrays de NumPy o listas.",
+      "Veinticuatro modelos de regresión, clasificación y bayesianos que comparten exactamente la misma API: fit, predict, evaluate, summary, save y load. Aceptan DataFrames de pandas, arrays de NumPy o listas.",
     sections: [
       {
         heading: "Clasificación",
@@ -104,6 +174,37 @@ model.fit(X_train, y_train)
 resultados = model.evaluate(X_test, y_test, plot=True)
 print(resultados["R2"])`,
         codeTitle: "regresion.py",
+      },
+      {
+        heading: "Modelos bayesianos: predicciones con incertidumbre",
+        body: "BayesianRidgeRegression y ARDRegression aprenden distribuciones sobre los coeficientes; GaussianProcessRegressor es no paramétrico y su intervalo se ensancha lejos de los datos. Todos exponen predict_interval, que devuelve la predicción con su banda de incertidumbre. También hay variantes de Naive Bayes (Multinomial, Bernoulli, Complement) y GaussianProcessClassifier.",
+        code: `from synaptix.supervised import (
+    BayesianRidgeRegression,   # regresión lineal bayesiana
+    ARDRegression,             # poda features irrelevantes
+    GaussianProcessRegressor,  # no paramétrico, ideal en datasets chicos
+)
+
+model = BayesianRidgeRegression()
+model.fit(X_train, y_train)
+
+media, inferior, superior = model.predict_interval(X_test, std=2)
+# std=2 equivale a ~95% de confianza`,
+        codeTitle: "bayesianos.py",
+      },
+      {
+        heading: "Inferencia bayesiana completa con PyMC",
+        body: "Con pip install synaptix[bayes] se habilitan PyMCLinearRegression y PyMCLogisticRegression: inferencia MCMC que entrega la distribución posterior completa de cada parámetro, intervalos creíbles y diagnósticos.",
+        code: `from synaptix.supervised import PyMCLinearRegression
+
+model = PyMCLinearRegression(draws=1000, tune=1000, chains=2)
+model.fit(X_train, y_train)          # muestreo MCMC
+
+media = model.predict(X_test)                        # media posterior
+media, low, high = model.predict_interval(X_test, hdi=0.94)
+
+model.summary()          # media, HDI y r_hat de cada parámetro
+model.plot_posterior()   # distribuciones posteriores`,
+        codeTitle: "pymc.py",
       },
       {
         heading: "El descenso de gradiente, animado",
