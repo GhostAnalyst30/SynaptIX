@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0b110e;
+  --color-ink-2: #101815;
+  --color-ink-3: #16201c;
+  --color-line: #223129;
+  --color-fog: #e9f4ed;
+  --color-mist: #9db8a9;
+  --color-dim: #5f7a6c;
+  --color-volt: #a3ff45;
+  --color-volt-dim: #6dbf2a;
+  --color-teal: #5eead4;
+  --color-amber: #ffc857;
+  --color-rose: #ff6b81;
+
+  --font-display: var(--font-syne), sans-serif;
+  --font-body: var(--font-manrope), sans-serif;
+  --font-mono: var(--font-jetbrains), monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-fog);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-volt);
+  color: var(--color-ink);
+}
+
+/* Rejilla técnica de fondo */
+.bg-blueprint {
+  background-image:
+    linear-gradient(rgba(163, 255, 69, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(163, 255, 69, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* Grano sutil */
+.grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ink);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dim);
+}
+
+/* Tokens de sintaxis Python */
+.tok-kw { color: #c792ea; }
+.tok-str { color: #a3ff45; }
+.tok-num { color: #ffc857; }
+.tok-com { color: #5f7a6c; font-style: italic; }
+.tok-fn { color: #5eead4; }
+.tok-cls { color: #82aaff; }
+.tok-op { color: #89ddff; }
+
+/* Enlace subrayado animado */
+.link-slide {
+  position: relative;
+}
+.link-slide::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 100%;
+  height: 1px;
+  background: var(--color-volt);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.3s ease;
+}
+.link-slide:hover::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+/* Cursor parpadeante del efecto de escritura */
+.typing-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.1em;
+  vertical-align: text-bottom;
+  background: var(--color-volt);
+  animation: blink 1s step-start infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Marquee de módulos */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
