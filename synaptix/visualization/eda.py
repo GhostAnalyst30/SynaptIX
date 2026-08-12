@@ -208,14 +208,19 @@ def plot_scatter_matrix(
     if len(cols) < 2:
         raise ValueError("Se necesitan al menos 2 columnas numéricas.")
 
+    # Filtrar nulos antes de graficar para que los colores coincidan
+    # con las filas que pandas efectivamente dibuja.
+    subset = cols + ([target] if target is not None and target not in cols else [])
+    data = df[subset].dropna()
+
     colors = None
     if target is not None:
-        categories = pd.Categorical(df[target])
+        categories = pd.Categorical(data[target])
         palette = plt.cm.tab10(np.linspace(0, 1, 10))
         colors = palette[categories.codes % 10]
 
     axes = pd.plotting.scatter_matrix(
-        df[cols], figsize=(2.2 * len(cols) + 2, 2.2 * len(cols) + 2),
+        data[cols], figsize=(2.2 * len(cols) + 2, 2.2 * len(cols) + 2),
         diagonal="hist", alpha=0.7, c=colors,
     )
     for ax in axes.ravel():
