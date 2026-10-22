@@ -2,10 +2,15 @@
 
 **Librería integral de Machine Learning para Python.** Una API unificada y en español que cubre aprendizaje supervisado, no supervisado, por refuerzo, redes neuronales y preprocesamiento de datos — pensada para AI Engineers y analistas de modelos.
 
+**Documentación completa + playground en línea:** https://synaptix.vercel.app/ (sitio Next.js en `web/` de este repo — el `docs-web/` anterior queda deprecado tras la migración).
+
 ```bash
 pip install synaptix            # núcleo (sklearn incluido)
 pip install synaptix[dl]        # + tensorflow (redes neuronales y DQN)
 pip install synaptix[bayes]     # + pymc (inferencia bayesiana completa)
+pip install synaptix[viewx]     # + ViewX (dashboards HTML, PDF, presentaciones)
+pip install synaptix[stats]     # + StatsLibX (diagnóstico estadístico de modelos)
+pip install synaptix[polars]    # + polars (DataFrames polars como entrada)
 pip install synaptix[all]       # todo
 ```
 
@@ -42,8 +47,10 @@ model.evaluate(X_test, y_test, plot=True)  # métricas + matriz de confusión
 | `synaptix.metrics` | `regression_metrics`, `classification_metrics`, `clustering_metrics`, `classification_report` |
 | `synaptix.model_selection` | `cross_validate`, `GridSearch`, `compare_models` (AutoML-lite) |
 | `synaptix.visualization` | Gráficas de modelos (matriz de confusión, ROC, curva de aprendizaje, residuos, frontera de decisión, `model_report`) y EDA (distribuciones, correlación, boxplots, scatter matrix, nulos) |
-| `synaptix.datasets` | `iris`, `penguins`, `titanic`, `sp500_companies`, `course_completion` |
+| `synaptix.datasets` | `iris`, `penguins`, `titanic`, `sp500_companies`, `course_completion` (compatible con `backend="polars"` y `return_X_y=True`) |
 | `synaptix.legacy` | API clásica v0.x (`IntelligenceArtificial`, `MachineLearning`, ...) |
+| `synaptix.viewx` | Puente opcional a ViewX: `to_report_data`, `render_html/report/presentation` (requiere `synaptix[viewx]`) |
+| `synaptix.viz` | Figuras Plotly para exportación (matriz de confusión, ROC, residuos, comparación de modelos; requiere `synaptix[viz]`) |
 
 ## Ejemplos por área
 
@@ -193,6 +200,104 @@ search = GridSearch(
 )
 mejor_modelo = search.fit(X, y)
 print(search.best_params_)
+```
+
+## Integración con ViewX y StatsLibX
+
+SynaptIX es el **motor de machine learning** del ecosistema GhostAnalyst, junto con [StatsLibX](https://github.com/GhostAnalyst30/StatsLibX) (estadística) y [ViewX](https://github.com/GhostAnalyst30/ViewX) (visualización y reportes). Las tres comparten el mismo contrato de payload y cargadores de datasets, y **cada una funciona por separado**:
+
+```mermaid
+flowchart TD
+    U["Datos crudos<br/>(CSV, DataFrame, arrays)"]
+    SLX["StatsLibX<br/>estadistica + manejo de datos + simulacion"]
+    SYN["SynaptIX<br/>modelos + evaluacion y mejora"]
+    VX["ViewX<br/>dashboards, EDA, PDF, slides"]
+    U --> SLX
+    U --> SYN
+    U --> VX
+    SLX -->|"DataFrame / polars"| SYN
+    SLX -->|"to_report_data() payload"| VX
+    SYN -->|"to_report_data() payload"| VX
+    SYN -->|"diagnostics() usa InferentialStats"| SLX
+    VX -->|"HTML / PDF / slides"| U
+```
+
+SynaptIX hace **todo el machine learning**; las integraciones son opcionales y cada librería funciona por separado.
+
+### Flujo completo del ecosistema (StatsLibX → SynaptIX → ViewX)
+
+```python
+# pip install statslibx[viewx] synaptix[viewx,stats] viewx
+from statslibx import DescriptiveStats, load_iris
+import synaptix as sx
+from viewx import from_report_payload
+
+df = load_iris()
+
+# 1. Estadística y calidad de datos (StatsLibX)
+DescriptiveStats(df).summary()
+
+# 2. Modelo, evaluación y diagnóstico estadístico (SynaptIX + StatsLibX)
+X, y = df.drop(columns="species"), df["species"]
+modelo = sx.supervised.RandomForestClassifier().fit(X, y)
+evaluacion = modelo.evaluate(X, y)
+diagnostico = modelo.diagnostics(X, y)   # requiere synaptix[stats]
+
+# 3. Todo en un dashboard (ViewX)
+payload = evaluacion.to_report_data(include_figures=True)
+from_report_payload(payload, target="html", filename="analisis.html")
+```
+
+> Portal con documentación y playground unificado de las tres librerías: **Libraries_of_Emms** (en este workspace).
+
+### Exportar resultados con ViewX (`pip install synaptix[viewx]`)
+
+Los resultados de `evaluate()`, `cross_validate()` y `compare_models()` siguen siendo dicts/DataFrames normales, pero además se pueden exportar a dashboards HTML, reportes PDF y presentaciones:
+
+```python
+import synaptix as sx
+
+df = sx.load_dataset("iris")
+X, y = df.drop(columns="species"), df["species"]
+
+model = sx.supervised.RandomForestClassifier().fit(X, y)
+resultado = model.evaluate(X, y)            # dict de métricas, como siempre
+
+# Requiere: pip install synaptix[viewx]
+resultado.to_html("evaluacion.html", theme="dark_enterprise")   # dashboard
+resultado.to_report("evaluacion")                               # PDF
+resultado.to_presentation("evaluacion_slides.html")             # slides
+
+# La tabla de compare_models sigue siendo un DataFrame; para el dashboard usa to_dashboard()
+tabla = sx.model_selection.compare_models(X, y, task="classification")
+tabla.to_dashboard("comparacion.html")
+
+# Pipeline manual con el mismo contrato de payload que StatsLibX
+payload = resultado.to_report_data(include_figures=True)
+from viewx import from_report_payload
+from_report_payload(payload, target="html", filename="evaluacion.html")
+```
+
+> **Sin ViewX instalado:** el análisis funciona normal. Los métodos `.to_html()` / `.to_report()` / `.to_presentation()` lanzan un error claro con la instrucción de instalación.
+
+### Diagnóstico estadístico con StatsLibX (`pip install synaptix[stats]`)
+
+```python
+# Regresión: normalidad de residuos + test de media cero
+# Clasificación: chi-cuadrado de asociación real vs. predicho
+diagnostico = model.diagnostics(X_test, y_test)
+diagnostico["normalidad_residuos"].interpretation
+```
+
+### Entrada polars
+
+Los modelos y pipelines aceptan DataFrames de polars directamente (se convierten internamente), por lo que la salida de StatsLibX con backend polars entra sin conversión manual:
+
+```python
+df_pl = sx.load_dataset("iris", backend="polars")   # requiere synaptix[polars]
+model.fit(df_pl.drop("species"), df_pl["species"])
+
+X, y = sx.load_dataset("iris", return_X_y=True)     # misma firma que statslibx/viewx
 ```
 
 ## API legacy (v0.x)

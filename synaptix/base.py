@@ -26,12 +26,23 @@ import pandas as pd
 ArrayLike = Union[pd.DataFrame, pd.Series, np.ndarray, list]
 
 
+def _from_polars(obj: Any) -> Any:
+    """Convierte DataFrames/Series de polars a pandas (si aplica).
+
+    Permite usar directamente datos que vienen de statslibx con backend
+    polars, sin que polars sea una dependencia de synaptix.
+    """
+    if type(obj).__module__.split(".")[0] == "polars" and hasattr(obj, "to_pandas"):
+        return obj.to_pandas()
+    return obj
+
+
 def to_matrix(X: ArrayLike) -> np.ndarray:
     """Convierte la entrada a una matriz NumPy 2D.
 
     Parameters
     ----------
-    X : DataFrame, Series, ndarray o lista
+    X : DataFrame (pandas o polars), Series, ndarray o lista
         Datos de entrada.
 
     Returns
@@ -39,6 +50,7 @@ def to_matrix(X: ArrayLike) -> np.ndarray:
     ndarray
         Matriz de forma ``(n_muestras, n_features)``.
     """
+    X = _from_polars(X)
     if isinstance(X, pd.DataFrame):
         return X.values
     if isinstance(X, pd.Series):
@@ -54,7 +66,7 @@ def to_vector(y: ArrayLike) -> np.ndarray:
 
     Parameters
     ----------
-    y : DataFrame, Series, ndarray o lista
+    y : DataFrame (pandas o polars), Series, ndarray o lista
         Variable objetivo.
 
     Returns
@@ -62,6 +74,7 @@ def to_vector(y: ArrayLike) -> np.ndarray:
     ndarray
         Vector de forma ``(n_muestras,)``.
     """
+    y = _from_polars(y)
     if isinstance(y, (pd.DataFrame, pd.Series)):
         y = y.values
     y = np.asarray(y)
@@ -70,6 +83,7 @@ def to_vector(y: ArrayLike) -> np.ndarray:
 
 def feature_names(X: ArrayLike) -> Optional[list]:
     """Devuelve los nombres de columnas si ``X`` es un DataFrame."""
+    X = _from_polars(X)
     if isinstance(X, pd.DataFrame):
         return list(X.columns)
     return None
@@ -178,8 +192,10 @@ class SynaptixModel:
 
         Returns
         -------
-        dict
-            Diccionario con las métricas calculadas.
+        EvaluationResult
+            Diccionario con las métricas calculadas (compatible con el
+            dict de siempre). Con ViewX instalado permite además
+            ``.to_html()``, ``.to_report()`` y ``.to_presentation()``.
         """
         from . import metrics as sx_metrics
 
@@ -191,6 +207,12 @@ class SynaptixModel:
             results = sx_metrics.classification_metrics(y_true, y_pred)
         else:
             results = sx_metrics.regression_metrics(y_true, y_pred)
+
+        results.model_name = self.name
+        if self.task == "classification" and hasattr(self.model, "predict_proba"):
+            proba = self.model.predict_proba(to_matrix(X))
+            if proba.ndim == 2 and proba.shape[1] == 2:
+                results.y_proba = proba[:, 1]
 
         if verbose:
             print(f"\n=== Evaluación: {self.name} ===")
@@ -204,6 +226,88 @@ class SynaptixModel:
                 sx_viz.plot_confusion_matrix(y_true, y_pred)
             else:
                 sx_viz.plot_predictions(y_true, y_pred)
+
+        return results
+
+    def diagnostics(
+        self,
+        X: ArrayLike,
+        y: ArrayLike,
+        alpha: float = 0.05,
+        normality_method: str = "shapiro",
+        verbose: bool = True,
+    ) -> dict:
+        """Diagnóstico estadístico del modelo usando StatsLibX (opcional).
+
+        Requiere ``statslibx`` (``pip install synaptix[stats]``).
+
+        En regresión ejecuta tests inferenciales sobre los residuos:
+        normalidad y media cero. En clasificación ejecuta un test
+        chi-cuadrado de asociación entre etiquetas reales y predichas.
+
+        Parameters
+        ----------
+        X : DataFrame, ndarray o lista
+            Features de prueba.
+        y : Series, ndarray o lista
+            Valores reales.
+        alpha : float, default=0.05
+            Nivel de significancia de los tests.
+        normality_method : str, default="shapiro"
+            Método del test de normalidad de statslibx
+            ("shapiro", "ks", "anderson", "jarque_bera", "all").
+        verbose : bool, default=True
+            Imprime la interpretación de cada test.
+
+        Returns
+        -------
+        dict
+            Resultados de statslibx (``TestResult``) por nombre de test.
+            En regresión: ``normalidad_residuos`` y ``media_residuos_cero``.
+            En clasificación: ``asociacion_real_predicho``.
+
+        Raises
+        ------
+        ImportError
+            Si statslibx no está instalado.
+        """
+        try:
+            from statslibx import InferentialStats
+        except ImportError as exc:
+            raise ImportError(
+                "StatsLibX no está instalado. "
+                "Instala con: pip install synaptix[stats] "
+                "(requerido para diagnostics)."
+            ) from exc
+
+        self._check_fitted()
+        y_true = to_vector(y)
+        y_pred = self.predict(X)
+
+        results: dict = {}
+
+        if self.task == "classification":
+            df = pd.DataFrame({"real": y_true, "predicho": y_pred})
+            inferential = InferentialStats(df)
+            results["asociacion_real_predicho"] = inferential.chi_square_test(
+                "real", "predicho", alpha=alpha
+            )
+        else:
+            residuals = y_true.astype(float) - y_pred.astype(float)
+            df = pd.DataFrame({"residuos": residuals})
+            inferential = InferentialStats(df)
+            results["normalidad_residuos"] = inferential.normality_test(
+                "residuos", method=normality_method, alpha=alpha
+            )
+            results["media_residuos_cero"] = inferential.t_test_1sample(
+                "residuos", popmean=0.0, alpha=alpha
+            )
+
+        if verbose:
+            print(f"\n=== Diagnóstico estadístico: {self.name} ===")
+            for test_name, test_result in results.items():
+                interpretation = getattr(test_result, "interpretation", test_result)
+                print(f"  {test_name}: {interpretation}")
 
         return results
 

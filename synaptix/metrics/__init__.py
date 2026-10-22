@@ -20,6 +20,7 @@ import numpy as np
 from sklearn import metrics as sk_metrics
 
 from ..base import ArrayLike, to_matrix, to_vector
+from ..results import EvaluationResult
 
 __all__ = [
     "regression_metrics",
@@ -41,9 +42,10 @@ def regression_metrics(y_true: ArrayLike, y_pred: ArrayLike) -> dict:
 
     Returns
     -------
-    dict
+    EvaluationResult
         ``{"MAE", "MSE", "RMSE", "R2", "MAPE"}`` (MAPE en %, se omite si
-        hay ceros en ``y_true``).
+        hay ceros en ``y_true``). Compatible con dict; con ViewX
+        instalado permite exportar con ``.to_html()`` y afines.
     """
     y_true = to_vector(y_true).astype(float)
     y_pred = to_vector(y_pred).astype(float)
@@ -59,7 +61,7 @@ def regression_metrics(y_true: ArrayLike, y_pred: ArrayLike) -> dict:
         results["MAPE"] = float(
             100 * np.mean(np.abs((y_true - y_pred) / y_true))
         )
-    return results
+    return EvaluationResult(results, task="regression", y_true=y_true, y_pred=y_pred)
 
 
 def classification_metrics(
@@ -78,13 +80,15 @@ def classification_metrics(
 
     Returns
     -------
-    dict
-        ``{"accuracy", "precision", "recall", "f1"}``.
+    EvaluationResult
+        ``{"accuracy", "precision", "recall", "f1"}``. Compatible con
+        dict; con ViewX instalado permite exportar con ``.to_html()``
+        y afines.
     """
     y_true = to_vector(y_true)
     y_pred = to_vector(y_pred)
 
-    return {
+    results = {
         "accuracy": float(sk_metrics.accuracy_score(y_true, y_pred)),
         "precision": float(
             sk_metrics.precision_score(y_true, y_pred, average=average, zero_division=0)
@@ -96,6 +100,7 @@ def classification_metrics(
             sk_metrics.f1_score(y_true, y_pred, average=average, zero_division=0)
         ),
     }
+    return EvaluationResult(results, task="classification", y_true=y_true, y_pred=y_pred)
 
 
 def clustering_metrics(X: ArrayLike, labels: ArrayLike) -> dict:
@@ -110,7 +115,7 @@ def clustering_metrics(X: ArrayLike, labels: ArrayLike) -> dict:
 
     Returns
     -------
-    dict
+    EvaluationResult
         ``{"silhouette", "calinski_harabasz", "davies_bouldin"}``.
         Silhouette y Calinski: mayor es mejor. Davies-Bouldin: menor es mejor.
     """
@@ -121,11 +126,12 @@ def clustering_metrics(X: ArrayLike, labels: ArrayLike) -> dict:
     if len(unique) < 2:
         raise ValueError("Se necesitan al menos 2 clusters para calcular métricas.")
 
-    return {
+    results = {
         "silhouette": float(sk_metrics.silhouette_score(X, labels)),
         "calinski_harabasz": float(sk_metrics.calinski_harabasz_score(X, labels)),
         "davies_bouldin": float(sk_metrics.davies_bouldin_score(X, labels)),
     }
+    return EvaluationResult(results, task="clustering")
 
 
 def classification_report(
@@ -149,8 +155,9 @@ def classification_report(
 
     Returns
     -------
-    dict
+    EvaluationResult
         Métricas globales + reporte por clase de scikit-learn.
+        Compatible con dict; exportable a ViewX.
     """
     y_true = to_vector(y_true)
     y_pred = to_vector(y_pred)

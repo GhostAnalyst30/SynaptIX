@@ -14,6 +14,12 @@ Submódulos:
 - ``synaptix.visualization``   : gráficas EDA y de modelos.
 - ``synaptix.datasets``        : datasets de ejemplo incluidos.
 - ``synaptix.legacy``          : API clásica v0.x (compatibilidad).
+- ``synaptix.viewx``           : puente opcional a ViewX (``pip install synaptix[viewx]``).
+- ``synaptix.viz``             : figuras Plotly para exportación (``pip install synaptix[viz]``).
+
+Integración opcional (cada una funciona de forma independiente):
+- ViewX     : ``model.evaluate(...).to_html("reporte.html")``
+- StatsLibX : ``model.diagnostics(X_test, y_test)`` (``pip install synaptix[stats]``)
 
 Ejemplo rápido
 --------------
@@ -44,6 +50,7 @@ from . import (
 from .base import SynaptixModel
 from .datasets import list_datasets, load_dataset
 from .pipeline import AutoPipeline, Pipeline
+from .results import CrossValidationResult, EvaluationResult, ModelComparisonResult
 
 # Clases legacy sin dependencias pesadas
 from .legacy import (
@@ -72,6 +79,14 @@ __all__ = [
     "Pipeline",
     "load_dataset",
     "list_datasets",
+    # Resultados exportables
+    "EvaluationResult",
+    "CrossValidationResult",
+    "ModelComparisonResult",
+    # Integración ViewX (opcional)
+    "viewx",
+    "viz",
+    "VIEWX_AVAILABLE",
     # Legacy
     "MachineLearning",
     "DeepLearning",
@@ -99,6 +114,18 @@ def __getattr__(name):
         from . import legacy
 
         return legacy
+    if name == "viewx":
+        from . import viewx
+
+        return viewx
+    if name == "viz":
+        from . import viz
+
+        return viz
+    if name == "VIEWX_AVAILABLE":
+        from .viewx import VIEWX_AVAILABLE
+
+        return VIEWX_AVAILABLE
     raise AttributeError(f"module 'synaptix' has no attribute '{name}'")
 
 

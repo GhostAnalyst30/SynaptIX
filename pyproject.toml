@@ -49,12 +49,19 @@ dl = ["tensorflow>=2.12.0"]
 bayes = ["pymc>=5.0.0"]
 nlp = ["nltk>=3.6.0"]
 viz = ["seaborn>=0.11.0", "plotly>=5.0.0"]
+viewx = ["viewx>=0.3.0", "plotly>=5.0.0"]
+stats = ["statslibx>=0.4.0"]
+polars = ["polars>=0.20.0", "pyarrow>=10.0.0"]
 all = [
     "tensorflow>=2.12.0",
     "pymc>=5.0.0",
     "nltk>=3.6.0",
     "seaborn>=0.11.0",
     "plotly>=5.0.0",
+    "viewx>=0.3.0",
+    "statslibx>=0.4.0",
+    "polars>=0.20.0",
+    "pyarrow>=10.0.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -62,4 +69,4 @@ include = ["synaptix*"]
 exclude = ["build*", "dist*", "docs-web*", "tests*"]
 
 [tool.setuptools.package-data]
-synaptix = ["datasets/*.csv"]
+synaptix = ["py.typed", "datasets/*.csv"]

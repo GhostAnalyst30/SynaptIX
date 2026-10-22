@@ -22,6 +22,7 @@ import pandas as pd
 from sklearn.model_selection import GridSearchCV, cross_val_score
 
 from ..base import ArrayLike, SynaptixModel, to_matrix, to_vector
+from ..results import CrossValidationResult, ModelComparisonResult
 
 __all__ = ["cross_validate", "GridSearch", "compare_models"]
 
@@ -33,7 +34,7 @@ def cross_validate(
     cv: int = 5,
     scoring: Optional[str] = None,
     verbose: bool = True,
-) -> dict:
+) -> CrossValidationResult:
     """Validación cruzada k-fold de un modelo SynaptIX.
 
     Parameters
@@ -53,18 +54,24 @@ def cross_validate(
 
     Returns
     -------
-    dict
-        ``{"scores", "media", "desviacion"}``.
+    CrossValidationResult
+        ``{"scores", "media", "desviacion"}``. Compatible con dict;
+        con ViewX instalado permite exportar con ``.to_html()`` y afines.
     """
     if scoring is None:
         scoring = "accuracy" if model.task == "classification" else "r2"
 
     scores = cross_val_score(model.model, to_matrix(X), to_vector(y), cv=cv, scoring=scoring)
-    results = {
-        "scores": scores.tolist(),
-        "media": float(scores.mean()),
-        "desviacion": float(scores.std()),
-    }
+    results = CrossValidationResult(
+        {
+            "scores": scores.tolist(),
+            "media": float(scores.mean()),
+            "desviacion": float(scores.std()),
+        },
+        model_name=model.name,
+        scoring=scoring,
+        cv=cv,
+    )
 
     if verbose:
         print(f"\n=== Validación cruzada ({cv} folds, {scoring}) ===")
@@ -146,7 +153,7 @@ def compare_models(
     task: Literal["classification", "regression"] = "classification",
     cv: int = 5,
     verbose: bool = True,
-) -> pd.DataFrame:
+) -> ModelComparisonResult:
     """Entrena y compara varios modelos con validación cruzada (AutoML-lite).
 
     Parameters
@@ -162,9 +169,11 @@ def compare_models(
 
     Returns
     -------
-    DataFrame
-        Tabla con score medio, desviación y tiempo por modelo,
-        ordenada de mejor a peor.
+    ModelComparisonResult
+        Tabla (subclase de DataFrame) con score medio, desviación y
+        tiempo por modelo, ordenada de mejor a peor. Con ViewX instalado
+        permite exportar con ``.to_dashboard()``, ``.to_report()`` y
+        ``.to_presentation()``.
 
     Ejemplo
     -------
@@ -223,7 +232,8 @@ def compare_models(
                 }
             )
 
-    table = pd.DataFrame(rows).sort_values(scoring, ascending=False).reset_index(drop=True)
+    sorted_rows = pd.DataFrame(rows).sort_values(scoring, ascending=False).reset_index(drop=True)
+    table = ModelComparisonResult(sorted_rows, task=task, scoring_name=scoring, cv=cv)
 
     if verbose:
         print(f"\n=== Comparación de modelos ({task}, {cv} folds) ===")
