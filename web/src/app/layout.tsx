@@ -5,7 +5,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://synaptix.vercel.app"),
+  metadataBase: new URL("https://synaptix-blue.vercel.app"),
   title: {
     default: "SynaptIX — Machine Learning Library for Python",
     template: "%s — SynaptIX",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   authors: [{ name: "Emmanuel Ascendra" }],
   openGraph: {
     type: "website",
-    url: "https://synaptix.vercel.app",
+    url: "https://synaptix-blue.vercel.app",
     siteName: "SynaptIX",
     title: "SynaptIX — Machine Learning Library for Python",
     description:

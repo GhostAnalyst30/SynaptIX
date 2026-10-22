@@ -2,7 +2,7 @@
 
 **Librería integral de Machine Learning para Python.** Una API unificada y en español que cubre aprendizaje supervisado, no supervisado, por refuerzo, redes neuronales y preprocesamiento de datos — pensada para AI Engineers y analistas de modelos.
 
-**Documentación completa + playground en línea:** https://synaptix.vercel.app/ (sitio Next.js en `web/` de este repo — el `docs-web/` anterior queda deprecado tras la migración).
+**Documentación completa + playground en línea:** https://synaptix-blue.vercel.app/ (sitio Next.js en `web/` de este repo — el `docs-web/` anterior queda deprecado tras la migración).
 
 ```bash
 pip install synaptix            # núcleo (sklearn incluido)
