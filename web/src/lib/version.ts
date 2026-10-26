@@ -1,1 +1,1 @@
-export const SYNAPTIX_VERSION = "0.1.7";
+export const SYNAPTIX_VERSION = "0.2.0";

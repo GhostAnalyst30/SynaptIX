@@ -4,7 +4,7 @@ Clases base de SynaptIX.
 Define ``SynaptixModel``, la clase base de todos los modelos supervisados
 de la librería. Provee una API unificada estilo scikit-learn:
 
-    fit / predict / evaluate / summary / save / load
+    fit / predict / evaluate / fit_evaluate / summary / save / load
 
 Ejemplo
 -------
@@ -12,18 +12,23 @@ Ejemplo
 >>> model = RandomForestClassifier(n_estimators=100)
 >>> model.fit(X_train, y_train)
 >>> model.evaluate(X_test, y_test)
+>>> # O dividir, entrenar y evaluar train/test en un paso:
+>>> resultado = model.fit_evaluate(X, y, test_size=0.3, metrics=["accuracy", "f1"])
 """
 
 from __future__ import annotations
 
 import os
 import pickle
-from typing import Any, Optional, Union
+import time
+import warnings
+from typing import Any, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
 
 ArrayLike = Union[pd.DataFrame, pd.Series, np.ndarray, list]
+TestSize = Optional[Union[float, int]]
 
 
 def _from_polars(obj: Any) -> Any:
@@ -89,7 +94,189 @@ def feature_names(X: ArrayLike) -> Optional[list]:
     return None
 
 
-class SynaptixModel:
+def check_test_size(test_size: TestSize, n_samples: int) -> int:
+    """Valida ``test_size`` y devuelve el nº de muestras de prueba.
+
+    Acepta un float en (0, 1) (proporción) o un entero >= 1 (cantidad).
+    """
+    if isinstance(test_size, bool):
+        raise ValueError(f"test_size no puede ser booleano (recibido: {test_size!r}).")
+    if isinstance(test_size, (float, np.floating)):
+        if not 0 < test_size < 1:
+            raise ValueError(f"test_size debe estar en (0, 1) (recibido: {test_size!r}).")
+        n_test = int(np.ceil(test_size * n_samples))
+    elif isinstance(test_size, (int, np.integer)):
+        n_test = int(test_size)
+    else:
+        raise ValueError(
+            f"test_size debe ser un float en (0, 1) o un entero (recibido: {test_size!r})."
+        )
+    if n_test < 1 or n_test >= n_samples:
+        raise ValueError(
+            f"test_size={test_size} deja un conjunto de train o test vacío "
+            f"con {n_samples} muestras."
+        )
+    return n_test
+
+
+def split_data(
+    X: ArrayLike,
+    y: Optional[ArrayLike] = None,
+    test_size: TestSize = 0.2,
+    random_state: Optional[int] = 42,
+    stratify: bool = False,
+):
+    """Divide X (y opcionalmente y) en train/test conservando DataFrames.
+
+    Con ``stratify=True`` estratifica por ``y`` si cada clase tiene al
+    menos 2 muestras y caben todas en ambos conjuntos; si no, avisa y
+    hace un split aleatorio simple.
+
+    Returns
+    -------
+    tuple
+        ``(X_train, X_test, y_train, y_test)`` o ``(X_train, X_test)`` si
+        ``y`` es None.
+    """
+    from sklearn.model_selection import train_test_split
+
+    X = _from_polars(X)
+    n_samples = len(X)
+    n_test = check_test_size(test_size, n_samples)
+
+    if y is None:
+        return train_test_split(X, test_size=n_test, random_state=random_state)
+
+    y = _from_polars(y)
+    strat = None
+    if stratify:
+        _, counts = np.unique(to_vector(y), return_counts=True)
+        if counts.min() >= 2 and len(counts) <= min(n_test, n_samples - n_test):
+            strat = to_vector(y)
+        else:
+            warnings.warn(
+                "No se puede estratificar con este test_size (clases con muy pocas "
+                "muestras); se usa un split aleatorio simple.",
+                stacklevel=3,
+            )
+    return train_test_split(X, y, test_size=n_test, random_state=random_state, stratify=strat)
+
+
+def _print_train_test(result) -> None:
+    print(f"\n=== Train vs. test: {result.model_name} ===")
+    if result.test_size is not None:
+        print(
+            f"  test_size : {result.test_size} "
+            f"({result.n_train} train / {result.n_test} test)"
+        )
+    if result.fit_time is not None:
+        print(f"  Tiempo    : {result.fit_time:.3f} s")
+    print(result.to_frame().to_string(float_format=lambda v: f"{v:.4f}"))
+
+
+class TrainTestMixin:
+    """Agrega ``fit_evaluate`` a modelos supervisados con ``fit``/``evaluate``."""
+
+    _default_fit_params: dict = {}
+
+    def fit_evaluate(
+        self,
+        X: ArrayLike,
+        y: ArrayLike,
+        test_size: TestSize = 0.2,
+        metrics: Optional[Sequence[str]] = None,
+        random_state: Optional[int] = 42,
+        stratify: Optional[bool] = None,
+        plot: bool = False,
+        verbose: bool = True,
+        fit_params: Optional[dict] = None,
+    ):
+        """Divide en train/test, entrena y devuelve las métricas de ambos conjuntos.
+
+        Parameters
+        ----------
+        X : DataFrame, ndarray o lista
+            Features completas.
+        y : Series, ndarray o lista
+            Variable objetivo completa.
+        test_size : float, int o None, default=0.2
+            Proporción (float en (0, 1)) o cantidad (int) de muestras de
+            prueba. Con ``None`` entrena con todo y solo reporta train.
+        metrics : sequence of str, optional
+            Métricas a calcular (ver ``synaptix.metrics.available_metrics``).
+            Por defecto las de :meth:`evaluate`.
+        random_state : int, optional, default=42
+            Semilla del split.
+        stratify : bool, optional
+            Estratificar por ``y``. Por defecto True en clasificación.
+        plot : bool, default=False
+            Gráficos de evaluación sobre el conjunto de prueba.
+        verbose : bool, default=True
+            Imprime la tabla train vs. test.
+        fit_params : dict, optional
+            Argumentos extra para ``fit`` (por ejemplo
+            ``{"epochs": 50, "batch_size": 16}`` en redes neuronales).
+
+        Returns
+        -------
+        TrainTestResult
+            ``{"train": métricas, "test": métricas}``. ``.to_frame()``
+            devuelve la tabla con la diferencia test - train (útil para
+            detectar sobreajuste).
+        """
+        from .results import TrainTestResult
+
+        task = getattr(self, "task", None)
+        if stratify is None:
+            stratify = task == "classification"
+
+        if test_size is None:
+            X_train, y_train, X_test, y_test = X, y, None, None
+        else:
+            X_train, X_test, y_train, y_test = split_data(
+                X, y, test_size=test_size, random_state=random_state, stratify=stratify
+            )
+
+        start = time.perf_counter()
+        self.fit(X_train, y_train, **{**self._default_fit_params, **(fit_params or {})})
+        fit_time = time.perf_counter() - start
+
+        train_metrics = self.evaluate(X_train, y_train, verbose=False, metrics=metrics)
+        test_metrics = None
+        if X_test is not None:
+            test_metrics = self.evaluate(X_test, y_test, verbose=False, metrics=metrics)
+
+        shape = np.shape(_from_polars(X_train))
+        if len(shape) > 2:
+            info: dict = {"input_shape": tuple(shape[1:])}
+        else:
+            info = {"n_features": shape[1] if len(shape) == 2 else 1}
+        estimator = getattr(self, "model", None)
+        if hasattr(estimator, "get_params"):
+            info["params"] = estimator.get_params()
+        if task == "classification":
+            info["clases"] = np.unique(to_vector(y)).tolist()
+
+        result = TrainTestResult(
+            train_metrics,
+            test_metrics,
+            model_name=getattr(self, "name", type(self).__name__),
+            task=task,
+            test_size=test_size,
+            n_train=len(to_vector(y_train)),
+            n_test=None if y_test is None else len(to_vector(y_test)),
+            fit_time=round(fit_time, 4),
+            info=info,
+        )
+
+        if verbose:
+            _print_train_test(result)
+        if plot and X_test is not None and hasattr(self, "_plot_evaluation"):
+            self._plot_evaluation(to_vector(y_test), self.predict(X_test))
+        return result
+
+
+class SynaptixModel(TrainTestMixin):
     """Clase base para todos los modelos supervisados de SynaptIX.
 
     Envuelve un estimador de scikit-learn y expone una API unificada.
@@ -175,6 +362,7 @@ class SynaptixModel:
         y: ArrayLike,
         plot: bool = False,
         verbose: bool = True,
+        metrics: Optional[Sequence[str]] = None,
     ) -> dict:
         """Evalúa el modelo e imprime un reporte de métricas.
 
@@ -189,6 +377,11 @@ class SynaptixModel:
             en clasificación, real vs. predicho en regresión).
         verbose : bool, default=True
             Si es True, imprime las métricas en consola.
+        metrics : sequence of str, optional
+            Métricas a calcular (sin distinguir mayúsculas). Por defecto:
+            accuracy/precision/recall/f1 en clasificación y
+            MAE/MSE/RMSE/R2/MAPE en regresión. Ver
+            ``synaptix.metrics.available_metrics(task)``.
 
         Returns
         -------
@@ -204,15 +397,22 @@ class SynaptixModel:
         y_pred = self.predict(X)
 
         if self.task == "classification":
-            results = sx_metrics.classification_metrics(y_true, y_pred)
+            proba = None
+            if hasattr(self.model, "predict_proba"):
+                proba = self.model.predict_proba(to_matrix(X))
+            results = sx_metrics.classification_metrics(
+                y_true,
+                y_pred,
+                metrics=metrics,
+                y_proba=proba,
+                labels=getattr(self.model, "classes_", None),
+            )
+            if proba is not None and proba.ndim == 2 and proba.shape[1] == 2:
+                results.y_proba = proba[:, 1]
         else:
-            results = sx_metrics.regression_metrics(y_true, y_pred)
+            results = sx_metrics.regression_metrics(y_true, y_pred, metrics=metrics)
 
         results.model_name = self.name
-        if self.task == "classification" and hasattr(self.model, "predict_proba"):
-            proba = self.model.predict_proba(to_matrix(X))
-            if proba.ndim == 2 and proba.shape[1] == 2:
-                results.y_proba = proba[:, 1]
 
         if verbose:
             print(f"\n=== Evaluación: {self.name} ===")
@@ -220,14 +420,17 @@ class SynaptixModel:
                 print(f"  {key:<12}: {value:.4f}")
 
         if plot:
-            from . import visualization as sx_viz
-
-            if self.task == "classification":
-                sx_viz.plot_confusion_matrix(y_true, y_pred)
-            else:
-                sx_viz.plot_predictions(y_true, y_pred)
+            self._plot_evaluation(y_true, y_pred)
 
         return results
+
+    def _plot_evaluation(self, y_true: np.ndarray, y_pred: np.ndarray) -> None:
+        from . import visualization as sx_viz
+
+        if self.task == "classification":
+            sx_viz.plot_confusion_matrix(y_true, y_pred)
+        else:
+            sx_viz.plot_predictions(y_true, y_pred)
 
     def diagnostics(
         self,

@@ -32,7 +32,19 @@ X_train, X_test, y_train, y_test = sx.preprocessing.train_test_split(
 model = sx.supervised.RandomForestClassifier(n_estimators=100)
 model.fit(X_train, y_train)
 model.evaluate(X_test, y_test, plot=True)  # métricas + matriz de confusión
+
+# O dividir, entrenar y ver métricas de train y test en un paso
+resultado = model.fit_evaluate(X, y, test_size=0.2, metrics=["accuracy", "f1", "mcc"])
+print(resultado.to_frame())                # métrica | train | test | diferencia
 ```
+
+`fit_evaluate(..., test_size=..., metrics=[...])` existe en todos los modelos: supervisados, clustering, PCA, redes neuronales (split temporal en `LSTMNet`) y agentes de refuerzo (donde `test_size` es la fracción de episodios de evaluación).
+
+## Novedades en v0.2.0
+
+- `fit_evaluate(...)` en todos los modelos: divide, entrena y devuelve un `TrainTestResult` con métricas de train y test.
+- Selección de métricas con `metrics=[...]` en todas las funciones de `synaptix.metrics` y `available_metrics()` para listarlas.
+- `compare_models` acepta `test_size`, `models` y `metrics`, reporta métricas de train y test con columna de sobreajuste y soporta clustering; nuevo `list_models`.
 
 ## Módulos
 
@@ -44,8 +56,8 @@ model.evaluate(X_test, y_test, plot=True)  # métricas + matriz de confusión
 | `synaptix.unsupervised` | `KMeans` (con codo y silhouette), `DBSCAN`, `HierarchicalClustering`, `GaussianMixture`, `PCA`, `TSNE` |
 | `synaptix.reinforcement` | `QLearningAgent`, `SARSAAgent`, `DQNAgent`, entorno `GridWorld` |
 | `synaptix.neural` | `MLP`, `CNN`, `LSTMNet` sobre Keras (requiere `synaptix[dl]`) |
-| `synaptix.metrics` | `regression_metrics`, `classification_metrics`, `clustering_metrics`, `classification_report` |
-| `synaptix.model_selection` | `cross_validate`, `GridSearch`, `compare_models` (AutoML-lite) |
+| `synaptix.metrics` | `regression_metrics`, `classification_metrics`, `clustering_metrics`, `classification_report`, `available_metrics` (todas con `metrics=[...]`) |
+| `synaptix.model_selection` | `cross_validate`, `GridSearch`, `compare_models` (AutoML-lite con métricas de train y test), `list_models` |
 | `synaptix.visualization` | Gráficas de modelos (matriz de confusión, ROC, curva de aprendizaje, residuos, frontera de decisión, `model_report`) y EDA (distribuciones, correlación, boxplots, scatter matrix, nulos) |
 | `synaptix.datasets` | `iris`, `penguins`, `titanic`, `sp500_companies`, `course_completion` (compatible con `backend="polars"` y `return_X_y=True`) |
 | `synaptix.legacy` | API clásica v0.x (`IntelligenceArtificial`, `MachineLearning`, ...) |
@@ -78,13 +90,17 @@ from synaptix.pipeline import Pipeline
 
 pipe = Pipeline([
     "clean",                            # DataCleaner con defaults
-    ("outliers", {"method": "iqr"}),    # params propios opcionales
+    ("outliers", {"columns": ["bill_length_mm", "body_mass_g"]}),  # params propios opcionales
     ("model", "random_forest"),         # o "model" solo = elegir automático
     "tune",                             # rejilla por defecto del modelo
     ("evaluate", {"plot": True}),
 ])
 pipe.fit(df, target="species")
+pipe.model_, pipe.results_, pipe.best_params_   # modelo, métricas de test, parámetros
+pipe.predict(df_nuevo)
 ```
+
+Atributos de `AutoPipeline` tras `fit`: `task_`, `cleaner_`, `ranking_`, `best_model_`, `best_name_`, `best_params_`, `results_`; métodos `predict`, `predict_proba`, `report(plot=True)`, `save(path)` y `AutoPipeline.load(path)`.
 
 ### Modelos bayesianos (con incertidumbre)
 
@@ -106,7 +122,7 @@ from synaptix.supervised import PyMCLinearRegression
 model = PyMCLinearRegression(draws=1000)
 model.fit(X_train, y_train)                       # inferencia MCMC
 media, low, high = model.predict_interval(X_test, hdi=0.94)
-model.summary()                                   # posteriores de cada parámetro
+print(model.summary())                            # resumen ArviZ de cada parámetro
 model.plot_posterior()
 ```
 
@@ -127,6 +143,16 @@ from synaptix.model_selection import compare_models
 
 tabla = compare_models(X, y, task="classification", cv=5)
 # Entrena 7 modelos con validación cruzada y devuelve un ranking
+
+# Elegir test_size, modelos y métricas; incluye métricas de train y columna "sobreajuste"
+tabla = compare_models(
+    X, y, test_size=0.3,
+    models=["RandomForestClassifier", "LogisticRegression"],
+    metrics=["accuracy", "f1"],
+)
+
+# Clustering: sin y
+compare_models(X, task="clustering", test_size=0.2, n_clusters=3)
 ```
 
 ### Clustering (no supervisado)

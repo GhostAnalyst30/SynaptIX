@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synaptix"
-version = "0.1.7"
+version = "0.2.0"
 description = "Librería integral de Machine Learning para Python: supervisado, no supervisado, refuerzo, redes neuronales y preprocesamiento."
 readme = "README.md"
 requires-python = ">=3.9"

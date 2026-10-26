@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { SYNAPTIX_VERSION } from "@/lib/version";
 
 interface ClassCardProps {
   title: string;
@@ -40,7 +41,7 @@ export function ClassCard({
             <div className={isNew ? "text-accent3" : "text-accent"}>{icon}</div>
             {isNew && (
               <span className="inline-flex items-center text-[10px] font-mono font-semibold uppercase tracking-wider text-accent3 bg-accent3/10 border border-accent3/25 px-2 py-0.5 rounded-full">
-                v0.4.0
+                v{SYNAPTIX_VERSION}
               </span>
             )}
           </div>

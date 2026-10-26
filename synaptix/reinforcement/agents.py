@@ -13,19 +13,185 @@ Ejemplo
 >>> rewards = agent.train(env, episodes=500)
 >>> agent.plot_rewards()
 >>> env.render(agent.policy())
+>>> # Reservar el 20% de los episodios para evaluar la política aprendida:
+>>> resultado = agent.fit_evaluate(env, episodes=500, test_size=0.2)
 """
 
 from __future__ import annotations
 
 import random
+import time
 from collections import deque
-from typing import List, Optional
+from typing import List, Optional, Sequence, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 
+from ..base import _print_train_test, check_test_size
 
-class _TabularAgent:
+_RL_METRICS = [
+    "recompensa_media",
+    "recompensa_std",
+    "recompensa_min",
+    "recompensa_max",
+    "pasos_medios",
+    "tasa_exito",
+]
+
+
+def _episode_metrics(
+    rewards: Sequence[float],
+    steps: Sequence[int],
+    successes: Sequence[Optional[bool]],
+    metrics: Optional[Sequence[str]],
+) -> dict:
+    """Resume una serie de episodios en las métricas pedidas."""
+    from ..metrics import _pick
+    from ..results import EvaluationResult
+
+    names = list(_RL_METRICS) if metrics is None else _pick(metrics, _RL_METRICS)
+    rewards = np.asarray(rewards, dtype=float)
+    known = [s for s in successes if s is not None]
+    values = {
+        "recompensa_media": float(rewards.mean()),
+        "recompensa_std": float(rewards.std()),
+        "recompensa_min": float(rewards.min()),
+        "recompensa_max": float(rewards.max()),
+        "pasos_medios": float(np.mean(steps)),
+        "tasa_exito": float(np.mean(known)) if known else np.nan,
+    }
+    if metrics is None and not known:
+        names.remove("tasa_exito")
+    return EvaluationResult({name: values[name] for name in names}, task="reinforcement")
+
+
+class _RLEvaluationMixin:
+    """``evaluate`` y ``fit_evaluate`` para agentes con ``act`` y ``train``.
+
+    La tasa de éxito se calcula si el entorno implementa ``is_success()``.
+    """
+
+    def _record_episode(self, env, total_reward: float, steps: int) -> None:
+        self.rewards_history.append(total_reward)
+        self.steps_history.append(steps)
+        success = env.is_success() if hasattr(env, "is_success") else None
+        self.success_history.append(success)
+
+    def evaluate(
+        self,
+        env,
+        episodes: int = 100,
+        metrics: Optional[Sequence[str]] = None,
+        max_steps: int = 1000,
+        verbose: bool = True,
+    ) -> dict:
+        """Evalúa la política aprendida (greedy, sin exploración ni aprendizaje).
+
+        Parameters
+        ----------
+        env : objeto entorno
+            Con ``reset()`` y ``step(action)``.
+        episodes : int, default=100
+            Episodios de evaluación.
+        metrics : sequence of str, optional
+            Subconjunto de recompensa_media, recompensa_std,
+            recompensa_min, recompensa_max, pasos_medios y tasa_exito.
+        max_steps : int, default=1000
+            Tope de pasos por episodio (evita bucles de políticas malas).
+        verbose : bool, default=True
+            Imprime las métricas.
+
+        Returns
+        -------
+        EvaluationResult
+        """
+        if episodes < 1:
+            raise ValueError(f"episodes debe ser >= 1 (recibido: {episodes!r}).")
+        rewards, steps_list, successes = [], [], []
+        for _ in range(episodes):
+            state = env.reset()
+            total_reward, steps, done = 0.0, 0, False
+            while not done and steps < max_steps:
+                state, reward, done = env.step(self.act(state, greedy=True))
+                total_reward += reward
+                steps += 1
+            rewards.append(total_reward)
+            steps_list.append(steps)
+            successes.append(env.is_success() if hasattr(env, "is_success") else None)
+
+        results = _episode_metrics(rewards, steps_list, successes, metrics)
+        results.model_name = type(self).__name__
+        if verbose:
+            print(f"\n=== Evaluación: {type(self).__name__} ({episodes} episodios) ===")
+            for key, value in results.items():
+                print(f"  {key:<17}: {value:.4f}")
+        return results
+
+    def fit_evaluate(
+        self,
+        env,
+        episodes: int = 500,
+        test_size: Union[float, int] = 0.2,
+        metrics: Optional[Sequence[str]] = None,
+        verbose: bool = True,
+    ):
+        """Entrena y evalúa reservando una parte de los episodios como prueba.
+
+        Los episodios de entrenamiento usan la política exploratoria
+        (epsilon-greedy); los de prueba, la política aprendida (greedy).
+
+        Parameters
+        ----------
+        env : objeto entorno
+            Con ``reset()`` y ``step(action)``.
+        episodes : int, default=500
+            Episodios totales (entrenamiento + prueba).
+        test_size : float o int, default=0.2
+            Proporción (float en (0, 1)) o cantidad (int) de episodios de
+            prueba.
+        metrics : sequence of str, optional
+            Ver :meth:`evaluate`.
+        verbose : bool, default=True
+            Imprime la tabla train vs. test.
+
+        Returns
+        -------
+        TrainTestResult
+        """
+        from ..results import TrainTestResult
+
+        n_test = check_test_size(test_size, episodes)
+        n_train = episodes - n_test
+
+        start = time.perf_counter()
+        self.train(env, episodes=n_train, verbose=False)
+        fit_time = time.perf_counter() - start
+
+        train = _episode_metrics(
+            self.rewards_history[-n_train:],
+            self.steps_history[-n_train:],
+            self.success_history[-n_train:],
+            metrics,
+        )
+        test = self.evaluate(env, episodes=n_test, metrics=metrics, verbose=False)
+
+        result = TrainTestResult(
+            train,
+            test,
+            model_name=type(self).__name__,
+            task="reinforcement",
+            test_size=test_size,
+            n_train=n_train,
+            n_test=n_test,
+            fit_time=round(fit_time, 4),
+            info={"epsilon_final": float(self.epsilon), "gamma": self.gamma},
+        )
+        if verbose:
+            _print_train_test(result)
+        return result
+
+
+class _TabularAgent(_RLEvaluationMixin):
     """Base para agentes tabulares con política epsilon-greedy.
 
     Parameters
@@ -68,6 +234,8 @@ class _TabularAgent:
         self.rng = np.random.default_rng(seed)
         self.q_table = np.zeros((n_states, n_actions))
         self.rewards_history: List[float] = []
+        self.steps_history: List[int] = []
+        self.success_history: List[Optional[bool]] = []
 
     def act(self, state: int, greedy: bool = False) -> int:
         """Elige una acción con política epsilon-greedy.
@@ -146,6 +314,7 @@ class QLearningAgent(_TabularAgent):
         for episode in range(episodes):
             state = env.reset()
             total_reward = 0.0
+            steps = 0
             done = False
 
             while not done:
@@ -160,8 +329,9 @@ class QLearningAgent(_TabularAgent):
 
                 state = next_state
                 total_reward += reward
+                steps += 1
 
-            self.rewards_history.append(total_reward)
+            self._record_episode(env, total_reward, steps)
             self._decay_epsilon()
 
             if verbose and (episode + 1) % 100 == 0:
@@ -190,6 +360,7 @@ class SARSAAgent(_TabularAgent):
             state = env.reset()
             action = self.act(state)
             total_reward = 0.0
+            steps = 0
             done = False
 
             while not done:
@@ -205,8 +376,9 @@ class SARSAAgent(_TabularAgent):
 
                 state, action = next_state, next_action
                 total_reward += reward
+                steps += 1
 
-            self.rewards_history.append(total_reward)
+            self._record_episode(env, total_reward, steps)
             self._decay_epsilon()
 
             if verbose and (episode + 1) % 100 == 0:
@@ -219,7 +391,7 @@ class SARSAAgent(_TabularAgent):
         return self.rewards_history
 
 
-class DQNAgent:
+class DQNAgent(_RLEvaluationMixin):
     """Deep Q-Network: Q-Learning con red neuronal (requiere tensorflow).
 
     Para entornos con estados continuos o espacios grandes donde una
@@ -283,6 +455,8 @@ class DQNAgent:
 
         self.memory: deque = deque(maxlen=buffer_size)
         self.rewards_history: List[float] = []
+        self.steps_history: List[int] = []
+        self.success_history: List[Optional[bool]] = []
 
         def build_network():
             model = Sequential()
@@ -340,6 +514,7 @@ class DQNAgent:
         for episode in range(episodes):
             state = np.asarray(env.reset(), dtype=float).ravel()
             total_reward = 0.0
+            steps = 0
             done = False
 
             while not done:
@@ -352,8 +527,9 @@ class DQNAgent:
 
                 state = next_state
                 total_reward += reward
+                steps += 1
 
-            self.rewards_history.append(total_reward)
+            self._record_episode(env, total_reward, steps)
             self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
             if (episode + 1) % self.target_update_every == 0:

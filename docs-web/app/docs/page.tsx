@@ -66,8 +66,8 @@ model.save("modelo_iris.pkl")`}
         title="automl.py"
         code={`from synaptix.model_selection import compare_models
 
-tabla = compare_models(X, y, task="classification", cv=5)
-# devuelve un ranking de 7 modelos con score, desviación y tiempo`}
+tabla = compare_models(X, y, test_size=0.2, metrics=["accuracy", "f1"])
+# ranking de 7 clasificadores con métricas de train y test, sobreajuste y tiempo`}
       />
 
       <h2 className="mt-10 font-display text-2xl font-bold">Módulos</h2>

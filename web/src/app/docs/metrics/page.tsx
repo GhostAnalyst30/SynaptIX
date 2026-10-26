@@ -8,9 +8,9 @@ export default function MetricsDocs() {
     <>
       <DocHeader
         title="Metrics"
-        description="Evaluation metrics for every task: regression (MAE, MSE, RMSE, R2, MAPE), classification (accuracy, precision, recall, F1) and clustering (silhouette, Calinski-Harabasz, Davies-Bouldin), plus full per-class reports."
+        description="Evaluation metrics for every task — regression, classification and clustering — with a metrics=[...] selector on every function, plus full per-class reports."
         icon={<Gauge className="w-6 h-6" />}
-        version="0.1.7"
+        version="0.2.0"
       />
 
       <section className="mb-12">
@@ -31,11 +31,19 @@ print(report)
 # Individual metrics
 print(sx.metrics.classification_metrics(y, y_pred, average="macro"))
 
-# Regression
-print(sx.metrics.regression_metrics(y_true_reg, y_pred_reg))
+# Pick exactly the metrics you want (case-insensitive)
+print(sx.metrics.classification_metrics(
+    y, y_pred, metrics=["accuracy", "mcc", "roc_auc"], y_proba=model.predict_proba(X),
+))
 
-# Clustering
-print(sx.metrics.clustering_metrics(X, km.labels_))`}
+# Regression
+print(sx.metrics.regression_metrics(y_true_reg, y_pred_reg, metrics=["rmse", "r2", "medae"]))
+
+# Clustering (+ external metrics against real labels)
+print(sx.metrics.clustering_metrics(X, km.labels_, y_true=y))
+
+# What is available for each task?
+sx.metrics.available_metrics("classification")`}
         />
       </section>
 
@@ -44,39 +52,53 @@ print(sx.metrics.clustering_metrics(X, km.labels_))`}
         <div className="method-list">
           <MethodCard
             name="regression_metrics"
-            signature="regression_metrics(y_true, y_pred) -> dict"
-            description="MAE, MSE, RMSE, R2 and MAPE in one call. Also available inside every model's <code className='code-inline'>evaluate()</code>."
+            signature="regression_metrics(y_true, y_pred, metrics=None) -> dict"
+            description="MAE, MSE, RMSE, R2 and MAPE by default. Also available on request: MedAE, explained_variance and max_error. The same selector exists in every model's evaluate() and fit_evaluate()."
+            parameters={[
+              { name: "metrics", type: "list[str]", description: "Subset to compute (case-insensitive).", default: "None (MAE, MSE, RMSE, R2, MAPE)" },
+            ]}
             returns="dict of float"
-            example={`sx.metrics.regression_metrics(y_true, y_pred)`}
+            example={`sx.metrics.regression_metrics(y_true, y_pred, metrics=["rmse", "medae"])`}
           />
 
           <MethodCard
             name="classification_metrics"
-            signature="classification_metrics(y_true, y_pred, average='weighted') -> dict"
-            description="Accuracy, precision, recall and F1 with a configurable averaging strategy for multiclass problems."
+            signature="classification_metrics(y_true, y_pred, average='weighted', metrics=None, y_proba=None, labels=None) -> dict"
+            description="Accuracy, precision, recall and F1 by default. Also available: balanced_accuracy, mcc, cohen_kappa, and — when y_proba is given — roc_auc and log_loss."
             parameters={[
               { name: "average", type: "str", description: "'weighted', 'macro', 'micro' or 'binary'.", default: "'weighted'" },
+              { name: "metrics", type: "list[str]", description: "Subset to compute (case-insensitive).", default: "None (accuracy, precision, recall, f1)" },
+              { name: "y_proba", type: "ndarray", description: "Predicted probabilities, required for roc_auc and log_loss.", default: "None" },
+              { name: "labels", type: "list", description: "Class order of the y_proba columns (model.classes_).", default: "None" },
             ]}
             returns="dict of float"
-            example={`sx.metrics.classification_metrics(y, y_pred, average="macro")`}
+            example={`sx.metrics.classification_metrics(y, y_pred, average="macro", metrics=["f1", "mcc"])`}
           />
 
           <MethodCard
             name="clustering_metrics"
-            signature="clustering_metrics(X, labels) -> dict"
-            description="Silhouette score, Calinski-Harabasz index and Davies-Bouldin index for clustering quality."
+            signature="clustering_metrics(X, labels, y_true=None, metrics=None) -> dict"
+            description="Silhouette, Calinski-Harabasz and Davies-Bouldin. With y_true it also computes ari, nmi, homogeneity, completeness and v_measure against the real labels."
             returns="dict of float"
-            example={`sx.metrics.clustering_metrics(X, km.labels_)`}
+            example={`sx.metrics.clustering_metrics(X, km.labels_, y_true=y, metrics=["silhouette", "ari"])`}
+          />
+
+          <MethodCard
+            name="available_metrics"
+            signature="available_metrics(task) -> list[str]"
+            description="Names accepted by metrics=[...] for 'regression', 'classification' or 'clustering'."
+            returns="list[str]"
+            example={`sx.metrics.available_metrics("clustering")`}
           />
 
           <MethodCard
             name="classification_report"
-            signature="classification_report(y_true, y_pred) -> dict"
-            description="Full per-class report: precision, recall, F1, support and the confusion matrix."
+            signature="classification_report(y_true, y_pred, plot=False, labels=None) -> dict"
+            description="Prints scikit-learn's text report and returns the global metrics (accuracy, precision, recall, f1) plus <code className='code-inline'>por_clase</code> with precision, recall, F1 and support per class. <code className='code-inline'>plot=True</code> draws the confusion matrix."
             returns="dict"
-            example={`report = sx.metrics.classification_report(y_test, y_pred)
-print(report["per_class"])
-print(report["confusion_matrix"])`}
+            example={`report = sx.metrics.classification_report(y_test, y_pred, plot=True)
+print(report["accuracy"])
+print(report["por_clase"])`}
           />
         </div>
       </section>

@@ -7,6 +7,8 @@ comparación) sin romper el API actual:
 - ``EvaluationResult``      : subclase de ``dict`` — se comporta igual que
   el dict de métricas de siempre, pero con métodos de exportación a ViewX.
 - ``CrossValidationResult`` : subclase de ``dict`` para validación cruzada.
+- ``TrainTestResult``       : subclase de ``dict`` con las métricas de
+  entrenamiento y prueba (``{"train": ..., "test": ...}``) de ``fit_evaluate``.
 - ``ModelComparisonResult`` : subclase de ``pandas.DataFrame`` para la
   tabla de ``compare_models`` (conserva ``to_string``, ``sort_values``, etc.).
 
@@ -27,6 +29,7 @@ from .viewx.export import ViewXExportMixin
 __all__ = [
     "EvaluationResult",
     "CrossValidationResult",
+    "TrainTestResult",
     "ModelComparisonResult",
 ]
 
@@ -106,6 +109,84 @@ class CrossValidationResult(dict, ViewXExportMixin):
         return dict(self)
 
 
+class TrainTestResult(dict, ViewXExportMixin):
+    """
+    Métricas de entrenamiento y prueba de un modelo (salida de ``fit_evaluate``).
+
+    Subclase de ``dict`` con las claves ``"train"`` y ``"test"``, cada una
+    con un dict de métricas (``EvaluationResult`` en modelos supervisados
+    y de clustering). ``"test"`` es ``None`` si no hubo conjunto de prueba.
+
+    Attributes
+    ----------
+    model_name : str o None
+        Nombre del modelo.
+    task : str o None
+        ``"classification"``, ``"regression"``, ``"clustering"``,
+        ``"decomposition"`` o ``"reinforcement"``.
+    test_size : float o None
+        Proporción usada como prueba.
+    n_train, n_test : int o None
+        Muestras (o episodios en refuerzo) de cada conjunto.
+    fit_time : float o None
+        Segundos de entrenamiento.
+    info : dict
+        Información adicional del modelo (parámetros, nº de clusters, ...).
+    """
+
+    def __init__(
+        self,
+        train: dict,
+        test: Optional[dict] = None,
+        model_name: Optional[str] = None,
+        task: Optional[str] = None,
+        test_size: Optional[float] = None,
+        n_train: Optional[int] = None,
+        n_test: Optional[int] = None,
+        fit_time: Optional[float] = None,
+        info: Optional[dict] = None,
+    ):
+        super().__init__({"train": train, "test": test})
+        self.model_name = model_name
+        self.task = task
+        self.test_size = test_size
+        self.n_train = n_train
+        self.n_test = n_test
+        self.fit_time = fit_time
+        self.info = info or {}
+
+    @property
+    def train(self) -> dict:
+        return self["train"]
+
+    @property
+    def test(self) -> Optional[dict]:
+        return self["test"]
+
+    def to_frame(self) -> pd.DataFrame:
+        """Tabla métrica × {train, test, diferencia} (diferencia = test - train)."""
+        train = {k: v for k, v in self["train"].items() if np.isscalar(v)}
+        frame = pd.DataFrame({"train": pd.Series(train, dtype=float)})
+        if self["test"] is not None:
+            test = {k: v for k, v in self["test"].items() if np.isscalar(v)}
+            order = list(dict.fromkeys([*train, *test]))
+            frame = frame.reindex(order)
+            frame["test"] = pd.Series(test, dtype=float)
+            frame["diferencia"] = frame["test"] - frame["train"]
+        frame.index.name = "metrica"
+        return frame
+
+    def to_dict(self) -> dict:
+        """Devuelve ``{"train": {...}, "test": {...}}`` con dicts planos."""
+        return {
+            key: (dict(value) if value is not None else None) for key, value in self.items()
+        }
+
+    def __repr__(self) -> str:
+        header = f"TrainTestResult({self.model_name or 'modelo'}, task={self.task})"
+        return f"{header}\n{self.to_frame().to_string()}"
+
+
 class ModelComparisonResult(pd.DataFrame, ViewXExportMixin):
     """
     Tabla comparativa de modelos (salida de ``compare_models``).
@@ -118,14 +199,17 @@ class ModelComparisonResult(pd.DataFrame, ViewXExportMixin):
     Attributes
     ----------
     task : str o None
-        ``"classification"`` o ``"regression"``.
+        ``"classification"``, ``"regression"`` o ``"clustering"``.
     scoring_name : str o None
-        Nombre de la columna de score (``"accuracy"`` o ``"r2"``).
+        Columna de la métrica de prueba usada para ordenar
+        (por ejemplo ``"accuracy"``, ``"r2"`` o ``"silhouette"``).
     cv : int o None
-        Número de folds usados en la comparación.
+        Número de folds (o de splits train/test si se usó ``test_size``).
+    test_size : float o None
+        Proporción de test usada, o ``None`` si se usó k-fold.
     """
 
-    _metadata = ["task", "scoring_name", "cv"]
+    _metadata = ["task", "scoring_name", "cv", "test_size"]
 
     @property
     def _constructor(self):
@@ -135,7 +219,9 @@ class ModelComparisonResult(pd.DataFrame, ViewXExportMixin):
         task = kwargs.pop("task", None)
         scoring_name = kwargs.pop("scoring_name", None)
         cv = kwargs.pop("cv", None)
+        test_size = kwargs.pop("test_size", None)
         super().__init__(*args, **kwargs)
+        self.test_size = test_size
         if task is not None:
             self.task = task
         if scoring_name is not None:

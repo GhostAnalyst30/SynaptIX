@@ -61,25 +61,37 @@ pipe.fit(df, target="species")
 
 pipe.ranking_        # DataFrame con la comparación de modelos
 pipe.best_model_     # el modelo ganador (API SynaptIX normal)
-pipe.best_params_    # hiperparámetros elegidos`,
+pipe.best_name_      # nombre del ganador, ej. "random_forest"
+pipe.best_params_    # hiperparámetros elegidos
+pipe.results_        # métricas en el set de prueba
+pipe.predict_proba(df_nuevo)
+pipe2 = sx.AutoPipeline.load("mi_pipeline.pkl")
+
+# Nombres válidos para models=[...]
+from synaptix.pipeline import MODEL_REGISTRY, DEFAULT_GRIDS
+list(MODEL_REGISTRY["classification"])
+# ['logistic', 'decision_tree', 'random_forest', 'gradient_boosting',
+#  'svm', 'knn', 'naive_bayes', 'gaussian_process']`,
         codeTitle: "configuracion.py",
       },
       {
         heading: "Pipeline declarativo por pasos",
-        body: "Para usuarios intermedios: se listan los pasos del proceso y el sistema rellena los parámetros de cada uno. Cada paso acepta overrides. Pasos soportados: clean, outliers, model (nombre o automático), tune y evaluate.",
+        body: "Para usuarios intermedios: se listan los pasos del proceso y el sistema rellena los parámetros de cada uno. Cada paso acepta overrides. Pasos soportados: clean, outliers, model (nombre o automático), tune y evaluate. Firma: Pipeline(steps, task=None, cv=5, test_size=0.2, random_state=42, verbose=True). Sin columns, el paso outliers revisa todas las numéricas (incluidas las dummies creadas por clean), así que conviene indicarlas.",
         code: `from synaptix.pipeline import Pipeline
 
 pipe = Pipeline([
-    "clean",                              # DataCleaner con defaults
-    ("outliers", {"method": "iqr"}),      # params propios opcionales
-    ("model", "random_forest"),           # o "model" solo = automático
-    "tune",                               # rejilla por defecto del modelo
+    "clean",                                          # DataCleaner con defaults
+    ("outliers", {"columns": ["bill_length_mm", "body_mass_g"], "method": "iqr"}),
+    ("model", "random_forest", {"n_estimators": 300}),  # o "model" solo = automático
+    "tune",                                           # o ("tune", {"param_grid": {...}})
     ("evaluate", {"plot": True}),
 ])
 pipe.fit(df, target="species")
 
+pipe.model_          # modelo entrenado (API SynaptIX normal)
 pipe.results_        # métricas del set de prueba
 pipe.best_params_    # parámetros elegidos en el paso tune
+pipe.ranking_        # comparación (solo si el paso model fue automático)
 pipe.predict(df_nuevo)`,
         codeTitle: "declarativo.py",
       },
@@ -176,6 +188,28 @@ print(resultados["R2"])`,
         codeTitle: "regresion.py",
       },
       {
+        heading: "Train y test en un paso: fit_evaluate",
+        body: "fit_evaluate divide los datos con tu test_size (estratificado en clasificación), entrena con la parte de train y devuelve las métricas que elijas para ambos conjuntos. to_frame() las muestra lado a lado con la diferencia test - train, útil para detectar sobreajuste. evaluate() también acepta metrics=[...].",
+        code: `from synaptix.supervised import RandomForestClassifier
+
+model = RandomForestClassifier(n_estimators=100)
+resultado = model.fit_evaluate(
+    X, y,
+    test_size=0.3,                  # o un entero: nº de filas de prueba
+    metrics=["accuracy", "f1", "roc_auc", "log_loss"],
+)
+#           train   test  diferencia
+# accuracy 1.0000 0.8889     -0.1111
+# f1       1.0000 0.8878     -0.1122
+# roc_auc  1.0000 0.9867     -0.0133
+# log_loss 0.0199 0.1989      0.1790
+
+resultado["test"]["accuracy"]   # acceso como dict
+resultado.info                  # parámetros, nº de features, clases
+model.evaluate(X_test, y_test, metrics=["balanced_accuracy", "mcc"])`,
+        codeTitle: "fit_evaluate.py",
+      },
+      {
         heading: "Modelos bayesianos: predicciones con incertidumbre",
         body: "BayesianRidgeRegression y ARDRegression aprenden distribuciones sobre los coeficientes; GaussianProcessRegressor es no paramétrico y su intervalo se ensancha lejos de los datos. Todos exponen predict_interval, que devuelve la predicción con su banda de incertidumbre. También hay variantes de Naive Bayes (Multinomial, Bernoulli, Complement) y GaussianProcessClassifier.",
         code: `from synaptix.supervised import (
@@ -202,7 +236,7 @@ model.fit(X_train, y_train)          # muestreo MCMC
 media = model.predict(X_test)                        # media posterior
 media, low, high = model.predict_interval(X_test, hdi=0.94)
 
-model.summary()          # media, HDI y r_hat de cada parámetro
+print(model.summary())   # DataFrame ArviZ: media, HDI y r_hat de cada parámetro
 model.plot_posterior()   # distribuciones posteriores`,
         codeTitle: "pymc.py",
       },
@@ -220,6 +254,23 @@ model.summary()
 model.save("modelo.pkl")
 modelo_cargado = RandomForestClassifier.load("modelo.pkl")`,
         codeTitle: "persistencia.py",
+      },
+      {
+        heading: "Referencia de métodos",
+        body: "Todos los modelos supervisados y bayesianos de scikit-learn comparten estos métodos (los constructores aceptan **kwargs que se pasan al estimador, disponible en .model). Los modelos PyMC tienen fit(X, y, progressbar=False), predict, predict_interval(X, hdi=0.94), predict_proba (logística), summary, plot_posterior, evaluate y fit_evaluate.",
+        code: `model.fit(X, y)
+model.predict(X)
+model.predict_proba(X)            # clasificadores
+model.score(X, y)                 # métrica por defecto
+model.evaluate(X, y, plot=False, verbose=True, metrics=None)
+model.fit_evaluate(X, y, test_size=0.2, metrics=None, random_state=42,
+                   stratify=None, plot=False, verbose=True)
+model.summary()
+model.feature_importances()       # pd.Series o None
+model.diagnostics(X, y, alpha=0.05, normality_method="shapiro")  # synaptix[stats]
+model.save("modelo.pkl"); Modelo.load("modelo.pkl")
+model.predict_interval(X, std=2.0)  # BayesianRidge, ARD, GaussianProcessRegressor`,
+        codeTitle: "api_supervisada.py",
       },
     ],
   },
@@ -279,6 +330,21 @@ pca.plot_variance()                    # varianza explicada acumulada
 TSNE(n_components=2).plot(X, labels=y) # proyección coloreada`,
         codeTitle: "reduccion.py",
       },
+      {
+        heading: "Evaluar en train y test",
+        body: "Todos los modelos de clustering y PCA tienen evaluate(X, metrics=...) y fit_evaluate(X, test_size=...): se ajusta con train y se mide en ambos conjuntos para ver si la estructura generaliza. KMeans y GaussianMixture asignan los puntos de prueba con su predict; DBSCAN y el jerárquico usan el cluster del punto de entrenamiento más cercano. Si pasas y, se agregan métricas externas (ari, nmi...).",
+        code: `from synaptix.unsupervised import KMeans, DBSCAN, PCA
+
+KMeans(n_clusters=3).fit_evaluate(X, y=df["species"], test_size=0.3)
+# silhouette, calinski_harabasz, davies_bouldin, ari, nmi, ..., n_clusters
+
+DBSCAN(eps=0.6).fit_evaluate(X, test_size=0.3, metrics=["silhouette"])
+# también reporta ruido_pct
+
+PCA(n_components=2).fit_evaluate(X, test_size=0.2)
+# varianza_explicada, mse_reconstruccion, rmse_reconstruccion`,
+        codeTitle: "no_supervisado_train_test.py",
+      },
     ],
   },
   {
@@ -325,6 +391,42 @@ sarsa.train(env, episodes=500)
 dqn = DQNAgent(state_dim=4, n_actions=2, hidden_layers=(64, 64))
 dqn.train(mi_entorno, episodes=200)`,
         codeTitle: "sarsa_dqn.py",
+      },
+      {
+        heading: "Episodios de entrenamiento y de prueba",
+        body: "En refuerzo, test_size es la fracción de episodios reservada para evaluar la política aprendida. fit_evaluate entrena con la política exploratoria (epsilon-greedy) y luego juega los episodios de prueba de forma greedy, sin aprender. La tasa de éxito se calcula si el entorno implementa is_success() (GridWorld lo hace).",
+        code: `agent = QLearningAgent(env.n_states, env.n_actions, seed=0)
+resultado = agent.fit_evaluate(env, episodes=500, test_size=0.2)  # 400 / 100
+#                     train   test
+# recompensa_media  -25.42   3.00
+# pasos_medios       20.26   8.00
+# tasa_exito          1.00   1.00
+
+agent.evaluate(env, episodes=50, metrics=["recompensa_media", "tasa_exito"])`,
+        codeTitle: "refuerzo_train_test.py",
+      },
+      {
+        heading: "Referencia de métodos",
+        body: "GridWorld(rows=4, cols=4, start=(0, 0), goal=None, obstacles=None, max_steps=200). QLearningAgent y SARSAAgent(n_states, n_actions, alpha=0.1, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, seed=None). DQNAgent(state_dim, n_actions, hidden_layers=(64, 64), gamma, epsilon, epsilon_min, epsilon_decay, learning_rate=1e-3, buffer_size=10000, batch_size=64, target_update_every=10).",
+        code: `# Entorno
+env.reset(); env.step(accion)        # -> (estado, recompensa, terminado)
+env.render(politica); env.is_success()
+env.state_id((fila, col)); env.position_of(estado)
+
+# Agentes tabulares
+agent.act(estado, greedy=False)
+agent.train(env, episodes=500, verbose=False)   # lista de recompensas
+agent.policy(); agent.plot_rewards(window=20)
+agent.q_table; agent.rewards_history; agent.steps_history; agent.success_history
+
+# DQN
+dqn.act(estado); dqn.remember(s, a, r, s2, done); dqn.replay()
+dqn.train(env, episodes=200, verbose=True); dqn.plot_rewards(window=10)
+
+# Todos
+agent.evaluate(env, episodes=100, metrics=None, max_steps=1000, verbose=True)
+agent.fit_evaluate(env, episodes=500, test_size=0.2, metrics=None, verbose=True)`,
+        codeTitle: "api_refuerzo.py",
       },
     ],
   },
@@ -381,6 +483,32 @@ lstm.plot_history()`,
         codeTitle: "lstm.py",
       },
       {
+        heading: "Train y test con fit_evaluate",
+        body: "MLP, CNN y LSTMNet tienen fit_evaluate con test_size y metrics. Los argumentos de entrenamiento van en fit_params (la salida de Keras es silenciosa por defecto). En LSTMNet el split es temporal: los últimos valores de la serie son la prueba y se evalúan con predicciones a un paso.",
+        code: `net = MLP(task="classification", hidden_layers=(64, 32))
+net.fit_evaluate(
+    X, y, test_size=0.2,
+    metrics=["accuracy", "f1", "roc_auc"],
+    fit_params={"epochs": 50, "batch_size": 16},
+)
+
+LSTMNet(window=12).fit_evaluate(serie_mensual, test_size=0.2, metrics=["rmse", "mae"])`,
+        codeTitle: "redes_train_test.py",
+      },
+      {
+        heading: "Referencia de métodos",
+        body: "MLP(task='regression', hidden_layers=(64, 32), activation='relu', dropout=0.0, scale=True, optimizer='adam'). CNN(input_shape, n_classes, conv_blocks=(32, 64), dense_units=128, dropout=0.3, optimizer='adam'). LSTMNet(window=10, units=(50,), scale=True, optimizer='adam'). El modelo Keras queda en .model y el historial en .history.",
+        code: `net.fit(X, y, epochs=100, batch_size=32, validation_split=0.2,
+        early_stopping=True, verbose=1)      # CNN: epochs=20; LSTM: fit(serie, epochs=50, validation_split=0.1)
+net.predict(X); net.predict_proba(X)         # MLP (clasificación) y CNN
+net.evaluate(X, y, verbose=True, metrics=None)          # LSTM: evaluate(serie)
+net.fit_evaluate(X, y, test_size=0.2, metrics=None, fit_params=None)
+net.plot_history(); net.summary()
+net.save("modelo.keras"); net.load("modelo.keras")
+lstm.forecast(serie, steps=1); LSTMNet.make_windows(serie, window=10)`,
+        codeTitle: "api_redes.py",
+      },
+      {
         heading: "Cómo optimiza una red",
         body: "Cada época, el optimizador mueve los pesos en dirección contraria al gradiente de la pérdida. Experimenta con el learning rate:",
         viz: "gradient",
@@ -413,6 +541,20 @@ clustering_metrics(X, labels)
         codeTitle: "metricas.py",
       },
       {
+        heading: "Elegir qué métricas calcular",
+        body: "Todas las funciones aceptan metrics=[...] (sin distinguir mayúsculas). Además de las de siempre hay MedAE, explained_variance y max_error en regresión; balanced_accuracy, mcc, cohen_kappa, roc_auc y log_loss en clasificación (las dos últimas requieren y_proba); y ari, nmi, homogeneity, completeness y v_measure en clustering cuando pasas las etiquetas reales.",
+        code: `from synaptix.metrics import available_metrics
+
+available_metrics("classification")
+# ['accuracy', 'precision', 'recall', 'f1', 'balanced_accuracy',
+#  'mcc', 'cohen_kappa', 'roc_auc', 'log_loss']
+
+regression_metrics(y_true, y_pred, metrics=["rmse", "r2", "medae"])
+classification_metrics(y_true, y_pred, metrics=["mcc", "roc_auc"], y_proba=proba)
+clustering_metrics(X, labels, y_true=y, metrics=["silhouette", "ari"])`,
+        codeTitle: "elegir_metricas.py",
+      },
+      {
         heading: "Reporte de clasificación completo",
         body: "Imprime métricas globales, el desglose por clase de scikit-learn y, con plot=True, la matriz de confusión. Devuelve todo como diccionario para uso programático.",
         code: `from synaptix.metrics import classification_report
@@ -432,20 +574,40 @@ print(reporte["por_clase"]["setosa"]["f1-score"])`,
     name: "synaptix.model_selection",
     title: "Validación y selección de modelos",
     intro:
-      "Validación cruzada, búsqueda de hiperparámetros en rejilla y compare_models: un AutoML-lite que entrena todos los modelos disponibles y devuelve un ranking.",
+      "Validación cruzada, búsqueda de hiperparámetros en rejilla y compare_models: un AutoML-lite que entrena los modelos que elijas y devuelve un ranking con métricas de entrenamiento y de prueba.",
     sections: [
       {
         heading: "compare_models: ¿cuál es el mejor modelo?",
-        body: "Entrena 7 clasificadores (o 7 regresores) con validación cruzada y devuelve un DataFrame ordenado por desempeño, con desviación estándar y tiempo de entrenamiento.",
+        body: "Entrena los candidatos del escenario (7 clasificadores, 7 regresores o 4 modelos de clustering si no pasas y) y devuelve un DataFrame ordenado por la métrica de prueba. Por cada métrica hay tres columnas: <métrica>_train, <métrica> (prueba) y <métrica>_std. La columna sobreajuste indica cuánto mejor le va al modelo en train que en test (positivo = sobreajuste).",
         code: `from synaptix.model_selection import compare_models
 
-tabla = compare_models(X, y, task="classification", cv=5)
-#                       modelo  accuracy  desviacion  tiempo_s
-#     RandomForestClassifier      0.9667      0.0211     0.512
-#              SVMClassifier      0.9667      0.0298     0.023
-#         LogisticRegression      0.9600      0.0327     0.041
-#                        ...`,
+tabla = compare_models(X, y, cv=5)   # tarea inferida, 5 folds`,
         codeTitle: "comparar.py",
+      },
+      {
+        heading: "Elegir test_size, modelos y métricas",
+        body: "Con test_size todos los modelos usan exactamente el mismo split (estratificado en clasificación); cv pasa a ser el número de splits aleatorios (1 por defecto). models acepta nombres del catálogo o instancias configuradas; list_models() muestra los nombres disponibles, incluidos extras como SVR, BayesianRidgeRegression o GaussianProcessClassifier.",
+        code: `from synaptix.model_selection import compare_models, list_models
+
+list_models("classification")
+
+tabla = compare_models(
+    X, y,
+    test_size=0.3,
+    models=["RandomForestClassifier", "LogisticRegression", "KNNClassifier"],
+    metrics=["accuracy", "f1", "mcc"],
+)
+#                 modelo  accuracy_train  accuracy  ...  sobreajuste
+#          KNNClassifier          0.9714    0.9778  ...      -0.0063
+#     LogisticRegression          0.9714    0.9333  ...       0.0381
+# RandomForestClassifier          1.0000    0.8889  ...       0.1111
+
+# Regresión: las métricas de error se ordenan ascendente automáticamente
+compare_models(X_reg, y_reg, test_size=0.25, metrics=["rmse", "r2", "mape"], sort_by="rmse")
+
+# Clustering: sin y (o con y para ari/nmi)
+compare_models(X, task="clustering", test_size=0.2, n_clusters=3)`,
+        codeTitle: "comparar_train_test.py",
       },
       {
         heading: "Validación cruzada",
@@ -489,7 +651,12 @@ sx.list_datasets()
 # ["iris", "penguins", "titanic", "sp500_companies", "course_completion"]
 
 df = sx.load_dataset("iris")        # con o sin extensión .csv
-df.head()`,
+df.head()
+
+# load_dataset(name, backend="pandas", return_X_y=None)
+X, y = sx.load_dataset("iris", return_X_y=True)            # target por defecto
+X, y = sx.load_dataset("titanic", return_X_y="Survived")   # target elegido
+df_pl = sx.load_dataset("iris", backend="polars")          # requiere synaptix[polars]`,
         codeTitle: "datasets.py",
       },
       {

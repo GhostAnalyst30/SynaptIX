@@ -3,24 +3,24 @@ import { DocHeader } from "@/components/DocHeader";
 import { CodeBlock } from "@/components/CodeBlock";
 
 const CLASSIFIERS = [
-  "LogisticRegression",
-  "DecisionTreeClassifier",
-  "RandomForestClassifier",
-  "GradientBoostingClassifier",
-  "SVMClassifier",
-  "KNNClassifier",
-  "NaiveBayes",
+  "LogisticRegression(C=1.0, max_iter=1000)",
+  "DecisionTreeClassifier(max_depth=None, random_state=42)",
+  "RandomForestClassifier(n_estimators=100, max_depth=None, random_state=42)",
+  "GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, random_state=42)",
+  "SVMClassifier(kernel='rbf', C=1.0, probability=True)",
+  "KNNClassifier(n_neighbors=5)",
+  "NaiveBayes()",
 ];
 
 const REGRESSORS = [
-  "LinearRegression",
-  "RidgeRegression",
-  "LassoRegression",
-  "DecisionTreeRegressor",
-  "RandomForestRegressor",
-  "GradientBoostingRegressor",
-  "SVR",
-  "KNNRegressor",
+  "LinearRegression()",
+  "RidgeRegression(alpha=1.0)",
+  "LassoRegression(alpha=1.0)",
+  "DecisionTreeRegressor(max_depth=None, random_state=42)",
+  "RandomForestRegressor(n_estimators=100, max_depth=None, random_state=42)",
+  "GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, random_state=42)",
+  "SVR(kernel='rbf', C=1.0)",
+  "KNNRegressor(n_neighbors=5)",
 ];
 
 export default function SupervisedDocs() {
@@ -30,7 +30,7 @@ export default function SupervisedDocs() {
         title="Supervised Models"
         description="8 regressors and 7 classifiers behind one unified API: fit, predict, predict_proba, score, evaluate, summary, feature_importances, save/load and diagnostics — all shared through SynaptixModel."
         icon={<Target className="w-6 h-6" />}
-        version="0.1.7"
+        version="0.2.0"
       />
 
       <section className="mb-12">
@@ -75,6 +75,35 @@ print(result)   # MAE, MSE, RMSE, R2, MAPE`}
       </section>
 
       <section className="mb-12">
+        <h2 className="section-title">Train / Test in One Step</h2>
+        <p className="text-sm text-muted leading-relaxed mb-4">
+          <code className="code-inline">fit_evaluate()</code> splits the data with your{" "}
+          <code className="code-inline">test_size</code> (stratified for classifiers), trains on the
+          train part and returns a <code className="code-inline">TrainTestResult</code> with the chosen
+          metrics for both sets. <code className="code-inline">.to_frame()</code> shows them side by
+          side with the test − train difference, which makes overfitting easy to spot.
+        </p>
+        <CodeBlock
+          title="fit_evaluate.py"
+          code={`model = sx.supervised.RandomForestClassifier(n_estimators=100)
+result = model.fit_evaluate(
+    X, y,
+    test_size=0.3,                                   # or an int: number of test rows
+    metrics=["accuracy", "f1", "mcc", "roc_auc"],
+)
+print(result.to_frame())     # metric | train | test | diferencia
+result["test"]["accuracy"]   # plain dict access
+result.info                  # params, n_features, classes
+result.fit_time              # seconds
+
+# Pick metrics in evaluate() too
+model.evaluate(X_te, y_te, metrics=["balanced_accuracy", "log_loss"])
+sx.metrics.available_metrics("regression")
+# ['MAE', 'MSE', 'RMSE', 'R2', 'MAPE', 'MedAE', 'explained_variance', 'max_error']`}
+        />
+      </section>
+
+      <section className="mb-12">
         <h2 className="section-title">Available Models</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-xl bg-white/[0.02] border border-border">
@@ -94,12 +123,19 @@ print(result)   # MAE, MSE, RMSE, R2, MAPE`}
             </ul>
           </div>
         </div>
+        <p className="text-sm text-muted leading-relaxed mt-4">
+          Every constructor also accepts <code className="code-inline">**kwargs</code> forwarded to the
+          underlying scikit-learn estimator, available afterwards in <code className="code-inline">.model</code>.
+          The bayesian models (BayesianRidgeRegression, ARDRegression, Gaussian processes, Naive Bayes
+          variants, PyMC) live in the same module — see Bayesian Models.
+        </p>
       </section>
 
       <section className="mb-12">
         <h2 className="section-title">The Unified Model API</h2>
         <p className="text-sm text-muted leading-relaxed mb-4">
-          Every model — supervised, unsupervised or bayesian — shares the same interface:
+          Every supervised and bayesian scikit-learn model shares this interface through{" "}
+          <code className="code-inline">SynaptixModel</code>:
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -115,11 +151,12 @@ print(result)   # MAE, MSE, RMSE, R2, MAPE`}
                 ["predict(X)", "Predict on new data"],
                 ["predict_proba(X)", "Class probabilities (classifiers)"],
                 ["score(X, y)", "Default metric score"],
-                ["evaluate(X, y, plot=False)", "Full metrics (optionally with plots)"],
+                ["evaluate(X, y, plot=False, verbose=True, metrics=None)", "Chosen metrics (optionally with plots) as an EvaluationResult dict"],
+                ["fit_evaluate(X, y, test_size=0.2, metrics=None, random_state=42, stratify=None, plot=False, verbose=True)", "Split, train and report train vs. test metrics (TrainTestResult)"],
                 ["summary()", "Model configuration summary"],
-                ["feature_importances()", "Per-column importance (when available)"],
-                ["diagnostics(X, y)", "Statistical tests via StatsLibX (extra stats)"],
-                ["save(path) / load(path)", "Pickle persistence"],
+                ["feature_importances()", "pd.Series with per-column importance or coefficients (None when unavailable)"],
+                ["diagnostics(X, y, alpha=0.05, normality_method='shapiro', verbose=True)", "Statistical tests on residuals / predictions via StatsLibX (extra stats)"],
+                ["save(path) / Model.load(path)", "Pickle persistence (load is a classmethod)"],
               ].map(([m, p]) => (
                 <tr key={m} className="hover:bg-white/[0.02] transition-colors">
                   <td className="py-2.5 pr-4 font-mono text-xs text-accent">{m}</td>
@@ -131,6 +168,7 @@ print(result)   # MAE, MSE, RMSE, R2, MAPE`}
         </div>
         <p className="text-sm text-muted leading-relaxed mt-4">
           Results from <code className="code-inline">evaluate()</code>,{" "}
+          <code className="code-inline">fit_evaluate()</code>,{" "}
           <code className="code-inline">cross_validate()</code> and{" "}
           <code className="code-inline">compare_models()</code> are plain dicts/DataFrames that also
           export to ViewX (<code className="code-inline">.to_html()</code>,{" "}

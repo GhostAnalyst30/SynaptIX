@@ -380,14 +380,14 @@ df = sx.load_dataset("iris")
 # Automatic ML: detect task -> clean -> compare -> tune -> evaluate
 auto = sx.AutoPipeline(task="classification")
 auto.fit(df, target="species")
-print(auto.evaluate())
-print(auto.best_model_)
+print(auto.best_name_, auto.results_)
 
-# Or manual: train, evaluate, diagnose
+# Or manual: split, train and get train vs. test metrics in one call
+X, y = df.drop(columns="species"), df["species"]
 model = sx.supervised.RandomForestClassifier(n_estimators=100)
-model.fit(*sx.train_test_split(df.drop(columns="species"), df["species"])[:2])
-model.evaluate(df.drop(columns="species"), df["species"], plot=True)
-model.diagnostics(df.drop(columns="species"), df["species"])   # via statslibx`}
+result = model.fit_evaluate(X, y, test_size=0.2, metrics=["accuracy", "f1"])
+print(result.to_frame())
+model.diagnostics(X, y)   # via statslibx`}
             />
           </motion.div>
         </div>

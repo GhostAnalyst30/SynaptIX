@@ -51,7 +51,7 @@ export default function InstallationPage() {
         title="Installation"
         description="Get started with SynaptIX in minutes"
         icon={<Shell className="w-6 h-6" />}
-        version="0.1.7"
+        version="0.2.0"
       />
 
       <section className="mb-12">

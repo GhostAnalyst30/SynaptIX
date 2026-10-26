@@ -41,7 +41,7 @@ def check(name):
 def test_import():
     import synaptix as sx
 
-    assert sx.__version__ == "0.1.7"
+    assert sx.__version__ == "0.2.0"
     assert hasattr(sx, "supervised")
     assert hasattr(sx, "preprocessing")
 
@@ -282,6 +282,53 @@ def test_model_selection():
 
     table = compare_models(X, y, task="classification", cv=3, verbose=False)
     assert len(table) == 7 and table["accuracy"].max() > 0.8
+
+
+@check("train/test: test_size, métricas train/test y selección de modelos")
+def test_train_test():
+    import synaptix as sx
+    from synaptix.model_selection import compare_models
+    from synaptix.reinforcement import GridWorld, QLearningAgent
+    from synaptix.supervised import LinearRegression, RandomForestClassifier
+    from synaptix.unsupervised import PCA, KMeans
+
+    df = sx.load_dataset("iris")
+    X = df.select_dtypes(include=[np.number])
+    y = df.iloc[:, -1]
+
+    table = compare_models(
+        X, y, test_size=0.3, models=["LogisticRegression", "KNNClassifier"],
+        metrics=["accuracy", "mcc"], verbose=False,
+    )
+    assert len(table) == 2 and table.test_size == 0.3
+    assert {"accuracy_train", "accuracy", "mcc_train", "sobreajuste"} <= set(table.columns)
+
+    reg = compare_models(
+        X.iloc[:, 1:], X.iloc[:, 0], test_size=0.25, metrics=["rmse", "r2"],
+        sort_by="rmse", verbose=False,
+    )
+    assert reg["rmse"].is_monotonic_increasing
+
+    clu = compare_models(X, task="clustering", test_size=0.2, verbose=False)
+    assert "silhouette_train" in clu.columns and len(clu) == 4
+
+    result = RandomForestClassifier(n_estimators=20).fit_evaluate(
+        X, y, test_size=0.3, metrics=["accuracy", "roc_auc"], verbose=False
+    )
+    assert set(result["test"]) == {"accuracy", "roc_auc"} and result.n_test == 45
+    assert list(result.to_frame().columns) == ["train", "test", "diferencia"]
+
+    result = LinearRegression().fit_evaluate(X.iloc[:, 1:], X.iloc[:, 0], test_size=30, verbose=False)
+    assert result.n_test == 30 and "R2" in result["train"]
+
+    result = KMeans(n_clusters=3).fit_evaluate(X, y, test_size=0.3, verbose=False)
+    assert "ari" in result["test"]
+    assert PCA(2).fit_evaluate(X, verbose=False)["test"]["varianza_explicada"] > 0.9
+
+    env = GridWorld(rows=4, cols=4)
+    agent = QLearningAgent(env.n_states, env.n_actions, seed=0)
+    result = agent.fit_evaluate(env, episodes=300, test_size=0.1, verbose=False)
+    assert result.n_train == 270 and result["test"]["tasa_exito"] == 1.0
 
 
 @check("visualization: generación de gráficos (backend Agg)")
@@ -544,6 +591,17 @@ def test_neural():
     lstm.fit(serie, epochs=5, verbose=0)
     forecast = lstm.forecast(serie, steps=3)
     assert forecast.shape == (3,)
+
+    result = MLP(task="classification", hidden_layers=(16,)).fit_evaluate(
+        X, y, test_size=0.3, metrics=["accuracy", "roc_auc"],
+        fit_params={"epochs": 10}, verbose=False,
+    )
+    assert set(result["test"]) == {"accuracy", "roc_auc"}
+
+    result = LSTMNet(window=10, units=(16,)).fit_evaluate(
+        serie, test_size=0.2, metrics=["rmse"], fit_params={"epochs": 2}, verbose=False
+    )
+    assert result.n_test == 40 and "RMSE" in result["test"]
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ export default function IntegrationDocs() {
         title="Ecosystem — ViewX & StatsLibX"
         description="SynaptIX is the ML engine of the GhostAnalyst data ecosystem. Export results to ViewX dashboards and reports, run statistical diagnostics with StatsLibX — each library also works standalone."
         icon={<Boxes className="w-6 h-6" />}
-        version="0.1.7"
+        version="0.2.0"
       />
 
       <section className="mb-12">
@@ -59,8 +59,11 @@ result.to_html("evaluacion.html", theme="dark_enterprise")   # dashboard
 result.to_report("evaluacion")                               # PDF
 result.to_presentation("evaluacion_slides.html")             # slides
 
+# train vs test metrics (TrainTestResult) -> dashboard
+model.fit_evaluate(X, y, test_size=0.3).to_html("train_test.html")
+
 # compare_models table -> dashboard
-tabla = sx.model_selection.compare_models(X, y, task="classification")
+tabla = sx.model_selection.compare_models(X, y, test_size=0.3)
 tabla.to_dashboard("comparacion.html")
 
 # Or the manual pipeline with the shared payload contract
@@ -99,8 +102,7 @@ print(diagnostico["normalidad_residuos"].interpretation)
           code={`df_pl = sx.load_dataset("iris", backend="polars")   # requires synaptix[polars]
 model.fit(df_pl.drop("species"), df_pl["species"])
 
-X, y = sx.load_dataset("iris", return_X_y=(
-    ["sepal_length", "sepal_width", "petal_length", "petal_width"], "species"))`}
+X, y = sx.load_dataset("iris", return_X_y=True)   # or return_X_y="species"`}
         />
       </section>
 

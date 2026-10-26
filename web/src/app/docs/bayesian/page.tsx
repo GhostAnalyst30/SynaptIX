@@ -1,5 +1,6 @@
 import { Sigma } from "lucide-react";
 import { DocHeader } from "@/components/DocHeader";
+import { MethodCard } from "@/components/MethodCard";
 import { CodeBlock } from "@/components/CodeBlock";
 
 export default function BayesianDocs() {
@@ -9,27 +10,25 @@ export default function BayesianDocs() {
         title="Bayesian Models"
         description="Uncertainty-aware models: Bayesian ridge, ARD, Gaussian processes, Naive Bayes variants and full PyMC models with prediction intervals — new in v0.1.7."
         icon={<Sigma className="w-6 h-6" />}
-        version="0.1.7"
+        version="0.2.0"
       />
 
       <section className="mb-12">
         <h2 className="section-title">Models with Prediction Intervals</h2>
         <CodeBlock
           title="intervals.py"
-          code={`import synaptix as sx
+          code={`import numpy as np
 import pandas as pd
+import synaptix as sx
 
-# Data with noise
-df = pd.DataFrame({"x": range(60)}, dtype=float)
-df["y"] = 0.8 * df["x"] + 5 + pd.Series(
-    __import__("numpy").random.default_rng(1).normal(0, 4, 60)
-)
+rng = np.random.default_rng(1)
+df = pd.DataFrame({"x": np.arange(60, dtype=float)})
+df["y"] = 0.8 * df["x"] + 5 + rng.normal(0, 4, 60)
 
 model = sx.supervised.BayesianRidgeRegression()
-model.fit(df[["x"]], df["y"])
+model.fit_evaluate(df[["x"]], df["y"], test_size=0.25)   # train/test metrics
 
-mean, low, high = model.predict_interval(df[["x"]], alpha=0.05)
-print("First 3 predictions with 95% intervals:")
+mean, low, high = model.predict_interval(df[["x"]], std=2.0)   # ~95% band
 for m, lo, hi in zip(mean[:3], low[:3], high[:3]):
     print(f"  {m:.2f}  [{lo:.2f}, {hi:.2f}]")`}
         />
@@ -37,7 +36,11 @@ for m, lo, hi in zip(mean[:3], low[:3], high[:3]):
           The bayesian regressors (<code className="code-inline">BayesianRidgeRegression</code>,{" "}
           <code className="code-inline">ARDRegression</code>,{" "}
           <code className="code-inline">GaussianProcessRegressor</code>) expose{" "}
-          <code className="code-inline">predict_interval(mean, low, high)</code>.
+          <code className="code-inline">predict_interval(X, std=2.0)</code>, returning{" "}
+          <code className="code-inline">(mean, mean - std·σ, mean + std·σ)</code>. They also share the full
+          supervised API: <code className="code-inline">fit</code>, <code className="code-inline">predict</code>,{" "}
+          <code className="code-inline">evaluate</code>, <code className="code-inline">fit_evaluate</code>,{" "}
+          <code className="code-inline">diagnostics</code>, <code className="code-inline">save</code>/<code className="code-inline">load</code>.
         </p>
       </section>
 
@@ -48,18 +51,20 @@ for m, lo, hi in zip(mean[:3], low[:3], high[:3]):
             <thead>
               <tr className="border-b border-border">
                 <th className="text-left font-syne text-xs font-semibold text-white uppercase tracking-wider pb-3 pr-4">Model</th>
-                <th className="text-left font-syne text-xs font-semibold text-white uppercase tracking-wider pb-3">Notes</th>
+                <th className="text-left font-syne text-xs font-semibold text-white uppercase tracking-wider pb-3">Signature / notes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {[
-                ["BayesianRidgeRegression", "Regularized linear regression with posterior estimates; predict_interval available"],
-                ["ARDRegression", "Automatic Relevance Determination — sparse coefficients"],
-                ["GaussianProcessRegressor", "Non-parametric with calibrated uncertainty"],
-                ["GaussianProcessClassifier", "Probabilistic classification"],
-                ["MultinomialNB / BernoulliNB / ComplementNB", "Naive Bayes family for counts, binary and imbalanced text data"],
-                ["PyMCLinearRegression", "Full Bayesian inference via MCMC (requires synaptix[bayes])"],
-                ["PyMCLogisticRegression", "Bayesian logistic regression via PyMC (requires synaptix[bayes])"],
+                ["BayesianRidgeRegression", "(max_iter=300, **kwargs) — predict_interval(X, std=2.0)"],
+                ["ARDRegression", "(max_iter=300, **kwargs) — sparse coefficients; predict_interval(X, std=2.0)"],
+                ["GaussianProcessRegressor", "(kernel=None, normalize_y=True, random_state=42) — predict_interval(X, std=2.0)"],
+                ["GaussianProcessClassifier", "(kernel=None, random_state=42) — probabilistic classification"],
+                ["MultinomialNB", "(alpha=1.0) — counts / text features"],
+                ["BernoulliNB", "(alpha=1.0, binarize=0.0) — binary features"],
+                ["ComplementNB", "(alpha=1.0) — imbalanced text data"],
+                ["PyMCLinearRegression", "(draws=1000, tune=1000, chains=2, random_seed=42) — requires synaptix[bayes]"],
+                ["PyMCLogisticRegression", "(draws=1000, tune=1000, chains=2, random_seed=42) — binary target, requires synaptix[bayes]"],
               ].map(([m, n]) => (
                 <tr key={m} className="hover:bg-white/[0.02] transition-colors">
                   <td className="py-2.5 pr-4 font-mono text-xs text-accent">{m}</td>
@@ -82,11 +87,24 @@ for m, lo, hi in zip(mean[:3], low[:3], high[:3]):
 
 import synaptix as sx
 
-model = sx.supervised.PyMCLinearRegression()
-model.fit(X_train, y_train, draws=1000)
-summary = model.summary()          # MCMC diagnostics
-mean, low, high = model.predict_interval(X_test)`}
+model = sx.supervised.PyMCLinearRegression(draws=1000, tune=1000, chains=2)
+model.fit(X_train, y_train, progressbar=False)
+print(model.summary())                                # ArviZ posterior summary (DataFrame)
+model.plot_posterior()
+mean, low, high = model.predict_interval(X_test, hdi=0.94)
+model.evaluate(X_test, y_test, metrics=["MAE", "R2"])
+
+clf = sx.supervised.PyMCLogisticRegression(draws=500)
+clf.fit_evaluate(X, y_binary, test_size=0.2)
+proba = clf.predict_proba(X_test)`}
         />
+        <div className="method-list mt-6">
+          <MethodCard
+            name="PyMC methods"
+            signature="fit(X, y, progressbar=False) · predict(X) · predict_interval(X, hdi=0.94) · predict_proba(X) · summary() · plot_posterior() · evaluate(X, y, verbose=True, metrics=None) · fit_evaluate(X, y, test_size=0.2, metrics=None, ...)"
+            description="<code className='code-inline'>predict_interval</code> (linear model only) returns the posterior mean and the HDI bounds; <code className='code-inline'>predict_proba</code> is available on the logistic model."
+          />
+        </div>
       </section>
     </>
   );

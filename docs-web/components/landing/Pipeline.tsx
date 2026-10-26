@@ -17,7 +17,7 @@ const STAGES = [
     module: "sx.preprocessing",
     description:
       "DataCleaner analiza nulos, outliers y tipos; imputa, codifica y escala en una sola llamada.",
-    code: 'df = DataCleaner().clean(df, target="survived")',
+    code: 'df = DataCleaner().clean(df, target="Survived")',
   },
   {
     icon: "◉",

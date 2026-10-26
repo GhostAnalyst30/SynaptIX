@@ -19,6 +19,7 @@ import {
   Database,
   Sigma,
   Code2,
+  BarChart3,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -39,6 +40,7 @@ const navItems = [
       { href: "/docs/reinforcement", label: "Reinforcement", icon: Gamepad2 },
       { href: "/docs/metrics", label: "Metrics", icon: Gauge },
       { href: "/docs/model-selection", label: "Model Selection", icon: Crosshair },
+      { href: "/docs/visualization", label: "Visualization", icon: BarChart3 },
       { href: "/docs/datasets", label: "Datasets", icon: Database },
     ],
   },

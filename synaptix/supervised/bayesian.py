@@ -24,7 +24,7 @@ Ejemplo
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -43,7 +43,7 @@ from sklearn.naive_bayes import (
     MultinomialNB as _SkMultinomialNB,
 )
 
-from ..base import ArrayLike, SynaptixModel, to_matrix, to_vector
+from ..base import ArrayLike, SynaptixModel, TrainTestMixin, to_matrix, to_vector
 
 
 # ======================================================================
@@ -241,8 +241,12 @@ def _require_pymc():
     return pm, az
 
 
-class _PyMCModel:
+class _PyMCModel(TrainTestMixin):
     """Base común para modelos PyMC: estandarización, resumen y gráficos."""
+
+    @property
+    def name(self) -> str:
+        return type(self).__name__
 
     def __init__(
         self,
@@ -328,6 +332,8 @@ class PyMCLinearRegression(_PyMCModel):
     >>> model.summary()
     """
 
+    task = "regression"
+
     def fit(self, X: ArrayLike, y: ArrayLike, progressbar: bool = False):
         """Ajusta el modelo muestreando la distribución posterior."""
         pm, _ = _require_pymc()
@@ -391,11 +397,17 @@ class PyMCLinearRegression(_PyMCModel):
         upper = np.quantile(samples, 1 - tail, axis=0)
         return samples.mean(axis=0), lower, upper
 
-    def evaluate(self, X: ArrayLike, y: ArrayLike, verbose: bool = True) -> dict:
+    def evaluate(
+        self,
+        X: ArrayLike,
+        y: ArrayLike,
+        verbose: bool = True,
+        metrics: Optional[Sequence[str]] = None,
+    ) -> dict:
         """Métricas de regresión sobre la media posterior."""
         from .. import metrics as sx_metrics
 
-        results = sx_metrics.regression_metrics(to_vector(y), self.predict(X))
+        results = sx_metrics.regression_metrics(to_vector(y), self.predict(X), metrics=metrics)
         if verbose:
             print("\n=== Evaluación: PyMCLinearRegression ===")
             for key, value in results.items():
@@ -422,6 +434,8 @@ class PyMCLogisticRegression(_PyMCModel):
     >>> probas = model.predict_proba(X_test)
     >>> clases = model.predict(X_test)
     """
+
+    task = "classification"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -475,11 +489,23 @@ class PyMCLogisticRegression(_PyMCModel):
         positive = self.predict_proba(X)[:, 1]
         return np.where(positive > 0.5, self._classes[1], self._classes[0])
 
-    def evaluate(self, X: ArrayLike, y: ArrayLike, verbose: bool = True) -> dict:
+    def evaluate(
+        self,
+        X: ArrayLike,
+        y: ArrayLike,
+        verbose: bool = True,
+        metrics: Optional[Sequence[str]] = None,
+    ) -> dict:
         """Métricas de clasificación sobre la clase más probable."""
         from .. import metrics as sx_metrics
 
-        results = sx_metrics.classification_metrics(to_vector(y), self.predict(X))
+        results = sx_metrics.classification_metrics(
+            to_vector(y),
+            self.predict(X),
+            metrics=metrics,
+            y_proba=self.predict_proba(X),
+            labels=self._classes,
+        )
         if verbose:
             print("\n=== Evaluación: PyMCLogisticRegression ===")
             for key, value in results.items():

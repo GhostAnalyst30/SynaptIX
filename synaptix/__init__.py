@@ -34,7 +34,7 @@ Ejemplo rápido
 >>> model.evaluate(X_test, y_test)
 """
 
-__version__ = "0.1.7"
+__version__ = "0.2.0"
 __author__ = "Emmanuel Ascendra"
 
 from . import (
@@ -50,7 +50,12 @@ from . import (
 from .base import SynaptixModel
 from .datasets import list_datasets, load_dataset
 from .pipeline import AutoPipeline, Pipeline
-from .results import CrossValidationResult, EvaluationResult, ModelComparisonResult
+from .results import (
+    CrossValidationResult,
+    EvaluationResult,
+    ModelComparisonResult,
+    TrainTestResult,
+)
 
 # Clases legacy sin dependencias pesadas
 from .legacy import (
@@ -83,6 +88,7 @@ __all__ = [
     "EvaluationResult",
     "CrossValidationResult",
     "ModelComparisonResult",
+    "TrainTestResult",
     # Integración ViewX (opcional)
     "viewx",
     "viz",

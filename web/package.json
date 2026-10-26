@@ -1,6 +1,6 @@
 {
   "name": "synaptix-docs",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "sync:lib": "node scripts/sync-synaptix.mjs",

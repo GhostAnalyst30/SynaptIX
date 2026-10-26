@@ -76,8 +76,11 @@ print(evaluation)
 report = sx.metrics.classification_report(y_test, model.predict(X_test))
 print(report)
 
-# 3. Feature importance renders inline in the output panel
-model.plot_feature_importance()
+# 3. Train vs. test metrics in one call
+print(model.fit_evaluate(X, y, test_size=0.2).to_frame())
+
+# 4. Feature importance renders inline in the output panel
+sx.visualization.plot_feature_importance(model)
 `,
   "autopipeline.py": `import synaptix as sx
 
@@ -88,9 +91,10 @@ df = sx.load_dataset("penguins")
 auto = sx.AutoPipeline(task="classification")
 auto.fit(df, target="species")
 
-print("Best model:", auto.best_model_)
+print("Best model:", auto.best_name_)
 print("Best params:", auto.best_params_)
-print("Evaluation:", auto.evaluate())
+print("Test metrics:", auto.results_)
+print(auto.ranking_)
 
 # Predict on raw data (the pipeline applies preprocessing itself)
 print(auto.predict(df.head(5)))
@@ -100,35 +104,38 @@ print(auto.predict(df.head(5)))
 df = sx.load_dataset("iris")
 X = df.drop(columns="species")
 
-# KMeans with elbow method and silhouette scores
+# The elbow curve renders inline
+sx.unsupervised.KMeans.elbow(X, k_max=8)
+
+# KMeans + clustering metrics
 km = sx.unsupervised.KMeans(n_clusters=3)
 km.fit(X)
-print("Inertia:", km.inertia_)
-print("Silhouette:", sx.metrics.clustering_metrics(X, km.labels_))
-
-# The elbow curve renders inline
-km.plot_elbow()
+print("Metrics:", sx.metrics.clustering_metrics(X, km.labels_))
+km.fit_evaluate(X, y=df["species"], test_size=0.3)
 
 # PCA for dimensionality reduction
 pca = sx.unsupervised.PCA(n_components=2)
 Z = pca.fit_transform(X)
-print("Explained variance:", pca.explained_variance_ratio_)
+print("Explained variance:")
+print(pca.explained_variance())
 `,
   "model_selection.py": `import synaptix as sx
 
 df = sx.load_dataset("iris")
 X, y = df.drop(columns="species"), df["species"]
 
-# Compare 7 classifiers with cross-validation
-comparison = sx.model_selection.compare_models(X, y, task="classification")
-print(comparison)   # sorted table: score, std, time
+# Compare classifiers: train and test metrics on a 20% holdout
+comparison = sx.model_selection.compare_models(
+    X, y, test_size=0.2, metrics=["accuracy", "f1"]
+)
+print(comparison)   # sorted table: train/test metrics, overfitting, time
 
 # GridSearch tuning on one model
 search = sx.model_selection.GridSearch(
     sx.supervised.RandomForestClassifier(),
     {"n_estimators": [50, 100, 200], "max_depth": [None, 5]},
 )
-search.fit(X, y)
+best = search.fit(X, y)   # returns the retrained best model
 print("Best score:", search.best_score_)
 print("Best params:", search.best_params_)
 `,

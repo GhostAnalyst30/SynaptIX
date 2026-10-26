@@ -18,7 +18,12 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from ..results import CrossValidationResult, EvaluationResult, ModelComparisonResult
+from ..results import (
+    CrossValidationResult,
+    EvaluationResult,
+    ModelComparisonResult,
+    TrainTestResult,
+)
 
 # Las clases de ViewX son opcionales; solo se importan si están disponibles.
 try:
@@ -119,6 +124,29 @@ def _cross_validation_payload(result: CrossValidationResult) -> Dict[str, Any]:
     }
 
 
+def _train_test_payload(result: TrainTestResult) -> Dict[str, Any]:
+    """Payload para métricas de entrenamiento vs. prueba."""
+    model_name = result.model_name or "Modelo"
+    frame = result.to_frame().reset_index()
+    body = f"Evaluación train/test de {model_name} (tarea: {result.task})."
+    if result.test_size is not None:
+        body += f" test_size={result.test_size:.0%} ({result.n_train} train / {result.n_test} test)."
+
+    source = result["test"] if result["test"] is not None else result["train"]
+    valueboxes = [
+        {"label": key, "value": f"{value:.4f}"}
+        for key, value in list(_scalar_metrics(source).items())[:4]
+    ]
+    return {
+        "title": f"Train vs. test — {model_name}",
+        "sections": [{"heading": "Resumen", "body": body}],
+        "tables": [{"name": "train_test", "data": frame.to_dict(orient="records")}],
+        "valueboxes": valueboxes,
+        "figures": [],
+        "metadata": {"result_type": "TrainTestResult", "task": result.task},
+    }
+
+
 def _comparison_payload(result: pd.DataFrame) -> Dict[str, Any]:
     """Payload para la tabla comparativa de modelos."""
     task = getattr(result, "task", None) or "modelos"
@@ -140,7 +168,7 @@ def _comparison_payload(result: pd.DataFrame) -> Dict[str, Any]:
         "sections": [
             {
                 "heading": "Resumen",
-                "body": f"Comparación de {len(result)} modelos con validación cruzada.",
+                "body": f"Comparación de {len(result)} modelos.",
             }
         ],
         "tables": [
@@ -266,6 +294,13 @@ def to_report_data(
     if isinstance(result, CrossValidationResult):
         payload = _cross_validation_payload(result)
         return _attach_figures(payload, result, include_figures, data)
+
+    if isinstance(result, TrainTestResult):
+        payload = _train_test_payload(result)
+        test = result["test"]
+        if include_figures and isinstance(test, EvaluationResult):
+            payload["figures"] = _attach_figures({}, test, True, data)["figures"]
+        return payload
 
     if isinstance(result, (ModelComparisonResult, pd.DataFrame)):
         payload = _comparison_payload(result)

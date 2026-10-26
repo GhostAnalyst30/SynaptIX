@@ -7,7 +7,7 @@ const DATASETS = [
   { name: "iris", desc: "Fisher's Iris flower measurements (3 species)", rows: "150", cols: "5" },
   { name: "penguins", desc: "Palmer penguins morphometrics (3 species)", rows: "344", cols: "7" },
   { name: "titanic", desc: "Titanic passenger manifest", rows: "418", cols: "12" },
-  { name: "sp500_companies", desc: "S&P 500 companies with financial metrics", rows: "503", cols: "21" },
+  { name: "sp500_companies", desc: "S&P 500 companies with financial metrics", rows: "502", cols: "16" },
   { name: "course_completion", desc: "Student course completion records", rows: "100,000", cols: "40" },
 ];
 
@@ -18,7 +18,7 @@ export default function DatasetsDocs() {
         title="Datasets"
         description="Bundled datasets ready for training, with the same loader signature as StatsLibX and ViewX — including polars backend and (X, y) array output."
         icon={<Database className="w-6 h-6" />}
-        version="0.1.7"
+        version="0.2.0"
       />
 
       <section className="mb-12">
@@ -57,7 +57,7 @@ export default function DatasetsDocs() {
             parameters={[
               { name: "name", type: "str", description: "Dataset name (e.g. 'iris') — see list_datasets()." },
               { name: "backend", type: "str", description: "'pandas' or 'polars'.", default: "'pandas'" },
-              { name: "return_X_y", type: "tuple[list[str], str] | None", description: "If (X_columns, y_column), return (X, y) arrays.", default: "None" },
+              { name: "return_X_y", type: "bool | str | None", description: "True returns (X, y) numpy arrays using the dataset's default target column; a string is used as the target column name.", default: "None" },
             ]}
             returns="pd.DataFrame | pl.DataFrame | tuple[np.ndarray, np.ndarray]"
             example={`import synaptix as sx
@@ -68,8 +68,8 @@ df = sx.load_dataset("iris")
 df_pl = sx.load_dataset("iris", backend="polars")
 
 # Arrays for sklearn-style workflows
-X, y = sx.load_dataset("iris",
-    return_X_y=(["sepal_length", "sepal_width", "petal_length", "petal_width"], "species"))`}
+X, y = sx.load_dataset("iris", return_X_y=True)             # default target: species
+X, y = sx.load_dataset("titanic", return_X_y="Survived")    # custom target column`}
           />
 
           <MethodCard

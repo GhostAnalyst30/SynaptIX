@@ -124,6 +124,10 @@ class GridWorld:
         done = self._position == self.goal or self._steps >= self.max_steps
         return self.state_id(self._position), reward, done
 
+    def is_success(self) -> bool:
+        """Indica si el agente llegó a la meta en el episodio actual."""
+        return self._position == self.goal
+
     # ------------------------------------------------------------------
 
     def render(self, policy: Optional[np.ndarray] = None) -> None:

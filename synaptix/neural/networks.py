@@ -14,16 +14,28 @@ Ejemplo
 >>> net.fit(X_train, y_train, epochs=50)
 >>> net.evaluate(X_test, y_test)
 >>> net.plot_history()
+>>> # Split, entrenamiento y métricas train/test en un paso:
+>>> net.fit_evaluate(X, y, test_size=0.2, fit_params={"epochs": 50})
 """
 
 from __future__ import annotations
 
-from typing import Literal, Optional, Tuple
+import time
+from typing import Literal, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..base import ArrayLike, to_matrix, to_vector
+from ..base import (
+    ArrayLike,
+    TrainTestMixin,
+    _print_train_test,
+    check_test_size,
+    to_matrix,
+    to_vector,
+)
+
+_PROBA_METRICS = {"roc_auc", "log_loss"}
 
 
 def _require_keras():
@@ -39,14 +51,66 @@ def _require_keras():
     return keras, models, layers, callbacks
 
 
-class _KerasNetwork:
+class _KerasNetwork(TrainTestMixin):
     """Base común: entrenamiento, evaluación, historia y persistencia."""
+
+    _default_fit_params = {"verbose": 0}
 
     def __init__(self):
         self.model = None
         self.history = None
         self.task: str = "regression"
         self._label_map: Optional[dict] = None
+
+    @property
+    def name(self) -> str:
+        return type(self).__name__
+
+    def evaluate(
+        self,
+        X: ArrayLike,
+        y: ArrayLike,
+        verbose: bool = True,
+        metrics: Optional[Sequence[str]] = None,
+    ) -> dict:
+        """Evalúa con las métricas de :mod:`synaptix.metrics`.
+
+        Parameters
+        ----------
+        X : array-like
+            Features (o imágenes en CNN).
+        y : array-like
+            Valores reales.
+        verbose : bool, default=True
+            Imprime las métricas.
+        metrics : sequence of str, optional
+            Métricas a calcular (ver ``synaptix.metrics.available_metrics``).
+        """
+        from .. import metrics as sx_metrics
+
+        y_true = to_vector(y)
+        y_pred = self.predict(X)
+
+        if self.task == "classification":
+            wants_proba = metrics is not None and any(
+                str(m).lower() in _PROBA_METRICS for m in metrics
+            )
+            results = sx_metrics.classification_metrics(
+                y_true,
+                y_pred,
+                metrics=metrics,
+                y_proba=self.predict_proba(X) if wants_proba else None,
+                labels=list(self._label_map) if self._label_map else None,
+            )
+        else:
+            results = sx_metrics.regression_metrics(y_true, y_pred, metrics=metrics)
+        results.model_name = self.name
+
+        if verbose:
+            print(f"\n=== Evaluación: {self.name} ===")
+            for key, value in results.items():
+                print(f"  {key:<12}: {value:.4f}")
+        return results
 
     # ------------------------------------------------------------------
 
@@ -293,24 +357,6 @@ class MLP(_KerasNetwork):
             return np.column_stack([1 - positive, positive])
         return raw
 
-    def evaluate(self, X: ArrayLike, y: ArrayLike, verbose: bool = True) -> dict:
-        """Evalúa con las métricas de :mod:`synaptix.metrics`."""
-        from .. import metrics as sx_metrics
-
-        y_true = to_vector(y)
-        y_pred = self.predict(X)
-
-        if self.task == "classification":
-            results = sx_metrics.classification_metrics(y_true, y_pred)
-        else:
-            results = sx_metrics.regression_metrics(y_true, y_pred)
-
-        if verbose:
-            print("\n=== Evaluación: MLP ===")
-            for key, value in results.items():
-                print(f"  {key:<12}: {value:.4f}")
-        return results
-
 
 class CNN(_KerasNetwork):
     """Red convolucional para clasificación de imágenes.
@@ -396,6 +442,14 @@ class CNN(_KerasNetwork):
             indices = np.argmax(raw, axis=1)
         return self._decode_labels(indices)
 
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Probabilidades por clase de cada imagen."""
+        raw = self.model.predict(np.asarray(X, dtype=float), verbose=0)
+        if self.n_classes == 2:
+            positive = raw.ravel()
+            return np.column_stack([1 - positive, positive])
+        return raw
+
 
 class LSTMNet(_KerasNetwork):
     """Red LSTM para pronóstico de series de tiempo.
@@ -417,6 +471,7 @@ class LSTMNet(_KerasNetwork):
     >>> net = LSTMNet(window=12, units=(64,))
     >>> net.fit(serie, epochs=50)          # serie: array 1D
     >>> futuro = net.forecast(serie, steps=6)
+    >>> net.fit_evaluate(serie, test_size=0.2)  # últimos 20% como prueba
     """
 
     def __init__(
@@ -517,3 +572,116 @@ class LSTMNet(_KerasNetwork):
                 predictions.reshape(-1, 1)
             ).ravel()
         return predictions
+
+    def _one_step_predictions(self, series: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Predicciones a un paso sobre cada ventana de ``series`` (escala original)."""
+        if self.model is None:
+            raise RuntimeError("Entrena la red primero con fit().")
+        if len(series) <= self.window:
+            raise ValueError(
+                f"La serie necesita más de window={self.window} valores (tiene {len(series)})."
+            )
+        scaled = series
+        if self.scaler is not None:
+            scaled = self.scaler.transform(series.reshape(-1, 1)).ravel()
+        X, _ = self.make_windows(scaled, self.window)
+        predictions = self.model.predict(X, verbose=0).ravel()
+        if self.scaler is not None:
+            predictions = self.scaler.inverse_transform(predictions.reshape(-1, 1)).ravel()
+        return series[self.window :], predictions
+
+    def evaluate(
+        self,
+        series: ArrayLike,
+        verbose: bool = True,
+        metrics: Optional[Sequence[str]] = None,
+    ) -> dict:
+        """Métricas de regresión del pronóstico a un paso sobre ``series``.
+
+        Cada valor a partir del índice ``window`` se predice con los
+        ``window`` valores reales anteriores.
+
+        Parameters
+        ----------
+        series : ndarray o Series
+            Serie a evaluar.
+        verbose : bool, default=True
+            Imprime las métricas.
+        metrics : sequence of str, optional
+            Métricas de regresión (ver ``synaptix.metrics.available_metrics``).
+        """
+        from .. import metrics as sx_metrics
+
+        y_true, y_pred = self._one_step_predictions(to_vector(series).astype(float))
+        results = sx_metrics.regression_metrics(y_true, y_pred, metrics=metrics)
+        results.model_name = self.name
+        if verbose:
+            print(f"\n=== Evaluación: {self.name} ===")
+            for key, value in results.items():
+                print(f"  {key:<12}: {value:.4f}")
+        return results
+
+    def fit_evaluate(
+        self,
+        series: ArrayLike,
+        test_size: Union[float, int] = 0.2,
+        metrics: Optional[Sequence[str]] = None,
+        verbose: bool = True,
+        fit_params: Optional[dict] = None,
+    ):
+        """Entrena con el inicio de la serie y evalúa en el tramo final.
+
+        El split es temporal (sin barajar): los últimos ``test_size``
+        valores son la prueba, y se predicen usando como contexto los
+        ``window`` valores previos.
+
+        Parameters
+        ----------
+        series : ndarray o Series
+            Serie de tiempo completa.
+        test_size : float o int, default=0.2
+            Proporción (float en (0, 1)) o cantidad (int) de valores finales
+            usados como prueba.
+        metrics : sequence of str, optional
+            Métricas de regresión.
+        verbose : bool, default=True
+            Imprime la tabla train vs. test.
+        fit_params : dict, optional
+            Argumentos extra para :meth:`fit` (``epochs``, ``batch_size``...).
+
+        Returns
+        -------
+        TrainTestResult
+        """
+        from ..results import TrainTestResult
+
+        series = to_vector(series).astype(float)
+        n_test = check_test_size(test_size, len(series))
+        n_train = len(series) - n_test
+        if n_train <= self.window + 1:
+            raise ValueError(
+                f"Con test_size={test_size} quedan {n_train} valores de train; se "
+                f"necesitan más de window+1={self.window + 1}."
+            )
+
+        start = time.perf_counter()
+        self.fit(series[:n_train], **{**self._default_fit_params, **(fit_params or {})})
+        fit_time = time.perf_counter() - start
+
+        train = self.evaluate(series[:n_train], verbose=False, metrics=metrics)
+        test = self.evaluate(series[n_train - self.window :], verbose=False, metrics=metrics)
+
+        result = TrainTestResult(
+            train,
+            test,
+            model_name=self.name,
+            task="regression",
+            test_size=test_size,
+            n_train=n_train,
+            n_test=n_test,
+            fit_time=round(fit_time, 4),
+            info={"window": self.window, "split": "temporal"},
+        )
+        if verbose:
+            _print_train_test(result)
+        return result

@@ -17,6 +17,7 @@ import {
   Boxes as EcosystemIcon,
   Shell,
   Search,
+  BarChart3,
 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 
@@ -49,6 +50,7 @@ const sections = [
     items: [
       { href: "/docs/metrics", label: "Metrics", icon: Gauge, keywords: "accuracy precision recall f1 mae rmse r2 silhouette confusion report" },
       { href: "/docs/model-selection", label: "Model Selection", icon: Crosshair, keywords: "cross validate gridsearch compare models tuning cv" },
+      { href: "/docs/visualization", label: "Visualization", icon: BarChart3, keywords: "plot confusion matrix roc learning curve residuals decision boundary feature importance correlation eda" },
     ],
   },
   {
