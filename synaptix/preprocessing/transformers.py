@@ -21,6 +21,7 @@ from sklearn.preprocessing import (
 )
 
 from ..base import ArrayLike
+from ._dtypes import text_columns
 
 
 class Scaler:
@@ -112,7 +113,7 @@ class Encoder:
         de tipo object o category.
         """
         if columns is None:
-            columns = df.select_dtypes(include=["object", "category"]).columns.tolist()
+            columns = text_columns(df)
         self._columns = columns
 
         for col in columns:
@@ -178,7 +179,7 @@ class Imputer:
     def fit(self, df: pd.DataFrame) -> "Imputer":
         """Aprende los valores de imputación por columna."""
         self._num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        self._cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+        self._cat_cols = text_columns(df)
 
         if self._num_cols:
             self._num_imputer = SimpleImputer(

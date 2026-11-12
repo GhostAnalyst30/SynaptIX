@@ -10,7 +10,7 @@ export default function ReinforcementDocs() {
         title="Reinforcement Learning"
         description="Q-Learning, SARSA and DQN agents over the GridWorld environment: tabular RL works out of the box, deep RL uses Keras via the dl extra."
         icon={<Gamepad2 className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">

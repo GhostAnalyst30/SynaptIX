@@ -20,6 +20,7 @@ import {
   Sigma,
   Code2,
   BarChart3,
+  Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ const navItems = [
     icon: ChevronDown,
     children: [
       { href: "/docs/pipeline", label: "Pipelines", icon: Workflow },
+      { href: "/docs/automl", label: "AutoML Engine", icon: Sparkles },
       { href: "/docs/preprocessing", label: "Preprocessing", icon: Filter },
       { href: "/docs/supervised", label: "Supervised", icon: Target },
       { href: "/docs/unsupervised", label: "Unsupervised", icon: Boxes },

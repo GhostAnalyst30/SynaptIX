@@ -158,7 +158,8 @@ def plot_boxplots(
     if by is None:
         fig, ax = plt.subplots(figsize=(1.4 * len(cols) + 3, 4.5))
         data = [df[col].dropna() for col in cols]
-        ax.boxplot(data, tick_labels=cols)
+        ax.boxplot(data)
+        ax.set_xticklabels(cols)  # tick_labels= solo existe desde matplotlib 3.9
         ax.set_title("Boxplots")
         ax.tick_params(axis="x", rotation=30)
         ax.grid(alpha=0.25)
@@ -170,7 +171,8 @@ def plot_boxplots(
         axes = np.atleast_1d(axes).ravel()
         for ax, col in zip(axes, cols):
             data = [df.loc[df[by] == g, col].dropna() for g in groups]
-            ax.boxplot(data, tick_labels=[str(g) for g in groups])
+            ax.boxplot(data)
+            ax.set_xticklabels([str(g) for g in groups])
             ax.set_title(f"{col} por {by}", fontsize=11)
             ax.tick_params(axis="x", rotation=30)
             ax.grid(alpha=0.25)

@@ -10,7 +10,7 @@ export default function NeuralDocs() {
         title="Neural Networks"
         description="MLP, CNN and LSTM networks over Keras/TensorFlow with training history plots and forecasting. Requires the dl extra — lazy imports keep the core light."
         icon={<Brain className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">

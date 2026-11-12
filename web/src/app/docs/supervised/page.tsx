@@ -6,7 +6,9 @@ const CLASSIFIERS = [
   "LogisticRegression(C=1.0, max_iter=1000)",
   "DecisionTreeClassifier(max_depth=None, random_state=42)",
   "RandomForestClassifier(n_estimators=100, max_depth=None, random_state=42)",
+  "ExtraTreesClassifier(n_estimators=100, max_depth=None, random_state=42)",
   "GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, random_state=42)",
+  "HistGradientBoostingClassifier(learning_rate=0.1, max_iter=100, random_state=42)",
   "SVMClassifier(kernel='rbf', C=1.0, probability=True)",
   "KNNClassifier(n_neighbors=5)",
   "NaiveBayes()",
@@ -16,9 +18,12 @@ const REGRESSORS = [
   "LinearRegression()",
   "RidgeRegression(alpha=1.0)",
   "LassoRegression(alpha=1.0)",
+  "ElasticNetRegression(alpha=1.0, l1_ratio=0.5)",
   "DecisionTreeRegressor(max_depth=None, random_state=42)",
   "RandomForestRegressor(n_estimators=100, max_depth=None, random_state=42)",
+  "ExtraTreesRegressor(n_estimators=100, max_depth=None, random_state=42)",
   "GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, random_state=42)",
+  "HistGradientBoostingRegressor(learning_rate=0.1, max_iter=100, random_state=42)",
   "SVR(kernel='rbf', C=1.0)",
   "KNNRegressor(n_neighbors=5)",
 ];
@@ -28,9 +33,9 @@ export default function SupervisedDocs() {
     <>
       <DocHeader
         title="Supervised Models"
-        description="8 regressors and 7 classifiers behind one unified API: fit, predict, predict_proba, score, evaluate, summary, feature_importances, save/load and diagnostics — all shared through SynaptixModel."
+        description="11 regressors and 9 classifiers behind one unified API: fit, predict, predict_proba, score, evaluate, summary, feature_importances, save/load and diagnostics — all shared through SynaptixModel."
         icon={<Target className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">
@@ -107,7 +112,7 @@ sx.metrics.available_metrics("regression")
         <h2 className="section-title">Available Models</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 rounded-xl bg-white/[0.02] border border-border">
-            <h3 className="font-syne text-sm font-semibold text-white mb-2">Classifiers (7)</h3>
+            <h3 className="font-syne text-sm font-semibold text-white mb-2">Classifiers (9)</h3>
             <ul className="space-y-1">
               {CLASSIFIERS.map((m) => (
                 <li key={m} className="font-mono text-xs text-accent">{m}</li>
@@ -115,7 +120,7 @@ sx.metrics.available_metrics("regression")
             </ul>
           </div>
           <div className="p-4 rounded-xl bg-white/[0.02] border border-border">
-            <h3 className="font-syne text-sm font-semibold text-white mb-2">Regressors (8)</h3>
+            <h3 className="font-syne text-sm font-semibold text-white mb-2">Regressors (11)</h3>
             <ul className="space-y-1">
               {REGRESSORS.map((m) => (
                 <li key={m} className="font-mono text-xs text-accent">{m}</li>

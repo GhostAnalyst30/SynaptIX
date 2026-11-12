@@ -15,7 +15,9 @@ Ejemplo
 from __future__ import annotations
 
 from sklearn.ensemble import (
+    ExtraTreesClassifier as _SkETC,
     GradientBoostingClassifier as _SkGBC,
+    HistGradientBoostingClassifier as _SkHGBC,
     RandomForestClassifier as _SkRFC,
 )
 from sklearn.linear_model import LogisticRegression as _SkLogistic
@@ -105,6 +107,61 @@ class GradientBoostingClassifier(_ClassificationModel):
             _SkGBC(
                 n_estimators=n_estimators,
                 learning_rate=learning_rate,
+                random_state=random_state,
+                **kwargs,
+            )
+        )
+
+
+class ExtraTreesClassifier(_ClassificationModel):
+    """Árboles extremadamente aleatorizados para clasificación.
+
+    Parameters
+    ----------
+    n_estimators : int, default=100
+        Número de árboles.
+    max_depth : int, optional
+        Profundidad máxima de cada árbol.
+    """
+
+    def __init__(
+        self, n_estimators: int = 100, max_depth=None, random_state: int = 42, **kwargs
+    ):
+        super().__init__(
+            _SkETC(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                random_state=random_state,
+                **kwargs,
+            )
+        )
+
+
+class HistGradientBoostingClassifier(_ClassificationModel):
+    """Gradient boosting basado en histogramas (rápido en datasets grandes).
+
+    Admite valores faltantes de forma nativa y early stopping automático
+    cuando hay más de 10 000 muestras.
+
+    Parameters
+    ----------
+    learning_rate : float, default=0.1
+        Tasa de aprendizaje.
+    max_iter : int, default=100
+        Máximo de iteraciones de boosting.
+    """
+
+    def __init__(
+        self,
+        learning_rate: float = 0.1,
+        max_iter: int = 100,
+        random_state: int = 42,
+        **kwargs,
+    ):
+        super().__init__(
+            _SkHGBC(
+                learning_rate=learning_rate,
+                max_iter=max_iter,
                 random_state=random_state,
                 **kwargs,
             )

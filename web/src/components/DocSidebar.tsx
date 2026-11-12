@@ -18,6 +18,7 @@ import {
   Shell,
   Search,
   BarChart3,
+  Sparkles,
 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 
@@ -32,6 +33,7 @@ const sections = [
     label: "ML Automation",
     items: [
       { href: "/docs/pipeline", label: "Pipelines", icon: Workflow, keywords: "autopipeline declarative clean tune evaluate detect task" },
+      { href: "/docs/automl", label: "AutoML Engine", icon: Sparkles, keywords: "automl leakage cross validation optuna halving random search ensemble stacking blending voting polars benchmark shap report experiment preset time budget" },
       { href: "/docs/preprocessing", label: "Preprocessing", icon: Filter, keywords: "scaler encoder imputer datacleaner outliers split" },
     ],
   },

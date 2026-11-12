@@ -1,4 +1,4 @@
-import { Shell, Package, Download, Heart, Beaker, FileJson, Cpu, Boxes, Sigma, Database, MessageSquare } from "lucide-react";
+import { Shell, Package, Download, Heart, Beaker, FileJson, Cpu, Boxes, Sigma, Database, MessageSquare, Zap, Search } from "lucide-react";
 import { DocHeader } from "@/components/DocHeader";
 import { CodeBlock } from "@/components/CodeBlock";
 
@@ -14,6 +14,10 @@ const requirements = [
   { package: "pymc", version: ">= 5.0.0 (optional extra: bayes)" },
   { package: "viewx", version: ">= 0.3.0 (optional extra: viewx)" },
   { package: "statslibx", version: ">= 0.4.0 (optional extra: stats)" },
+  { package: "polars + pyarrow", version: ">= 0.20.0 / >= 10.0.0 (optional extras: polars, automl)" },
+  { package: "optuna", version: ">= 3.0.0 (optional extra: automl)" },
+  { package: "psutil", version: ">= 5.8.0 (optional extra: automl)" },
+  { package: "shap", version: ">= 0.42.0 (optional extra: explain)" },
 ];
 
 const troubleshooting = [
@@ -51,7 +55,7 @@ export default function InstallationPage() {
         title="Installation"
         description="Get started with SynaptIX in minutes"
         icon={<Shell className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">
@@ -145,15 +149,30 @@ print(sx.list_datasets())`}
           </div>
           <div className="px-4 py-3 rounded-lg bg-white/5 border border-border">
             <div className="flex items-center gap-2 mb-1">
+              <Zap className="w-4 h-4 text-accent2" />
+              <span className="font-syne text-sm font-semibold text-white">automl</span>
+            </div>
+            <p className="text-xs text-muted">polars/pyarrow engine, Optuna search and psutil memory profiling for AutoPipeline.</p>
+          </div>
+          <div className="px-4 py-3 rounded-lg bg-white/5 border border-border">
+            <div className="flex items-center gap-2 mb-1">
+              <Search className="w-4 h-4 text-accent2" />
+              <span className="font-syne text-sm font-semibold text-white">explain</span>
+            </div>
+            <p className="text-xs text-muted">SHAP values for the final AutoPipeline model.</p>
+          </div>
+          <div className="px-4 py-3 rounded-lg bg-white/5 border border-border">
+            <div className="flex items-center gap-2 mb-1">
               <Heart className="w-4 h-4 text-accent2" />
               <span className="font-syne text-sm font-semibold text-white">all</span>
             </div>
-            <p className="text-xs text-muted">Everything above, plus polars and plotly.</p>
+            <p className="text-xs text-muted">Everything above, plus seaborn and plotly.</p>
           </div>
         </div>
         <div className="space-y-3">
           <CodeBlock title="bash" code="pip install 'synaptix[dl]'" />
           <CodeBlock title="bash" code="pip install 'synaptix[viewx,stats]'" />
+          <CodeBlock title="bash" code="pip install 'synaptix[automl,explain]'" />
           <CodeBlock title="bash" code="pip install 'synaptix[all]'" />
         </div>
       </section>

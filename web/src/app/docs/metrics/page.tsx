@@ -10,7 +10,7 @@ export default function MetricsDocs() {
         title="Metrics"
         description="Evaluation metrics for every task — regression, classification and clustering — with a metrics=[...] selector on every function, plus full per-class reports."
         icon={<Gauge className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">

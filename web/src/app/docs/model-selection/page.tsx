@@ -10,7 +10,7 @@ export default function ModelSelectionDocs() {
         title="Model Selection"
         description="Cross-validation, hyperparameter tuning and model comparison: k-fold cross_validate, GridSearch with best params, and compare_models — an AutoML-lite sweep over classifiers, regressors or clustering models with train and test metrics side by side."
         icon={<Crosshair className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">
@@ -158,8 +158,10 @@ print(tabla.head())`}
         <h2 className="section-title">Default Grids</h2>
         <p className="text-sm text-muted leading-relaxed">
           <code className="code-inline">synaptix.pipeline.grids.DEFAULT_GRIDS</code> ships sensible
-          grids per model — <code className="code-inline">AutoPipeline</code> uses them for its tuning
-          step, and you can reuse them in your own <code className="code-inline">GridSearch</code> calls.
+          grids per model — <code className="code-inline">AutoPipeline</code> uses them for{" "}
+          <code className="code-inline">tuning=&quot;grid&quot;</code> (random, halving and Optuna use the
+          distributions in <code className="code-inline">synaptix.automl.tuning.spaces</code>), and you can
+          reuse them in your own <code className="code-inline">GridSearch</code> calls.
         </p>
       </section>
     </>

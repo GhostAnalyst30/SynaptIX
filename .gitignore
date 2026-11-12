@@ -9,6 +9,16 @@ venv/
 *.pkl
 estado_ia.pkl
 
+# Benchmarks (datos generados y logs; los resultados JSON sí se versionan)
+benchmarks/.data/
+benchmarks/.*_log.txt
+automl_report.html
+# Salidas del notebook how_use_synaptix.ipynb
+evaluacion.html
+evaluacion_slides.html
+analisis.html
+*.toml
+
 # Jupyter
 .ipynb_checkpoints/
 

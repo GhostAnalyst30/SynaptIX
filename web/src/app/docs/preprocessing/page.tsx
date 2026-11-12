@@ -10,7 +10,7 @@ export default function PreprocessingDocs() {
         title="Preprocessing"
         description="Data preparation that keeps column names: DataCleaner, Scaler, Encoder, Imputer, outlier detection/removal and train_test_split — every transformer returns DataFrames ready for models or export."
         icon={<Filter className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">

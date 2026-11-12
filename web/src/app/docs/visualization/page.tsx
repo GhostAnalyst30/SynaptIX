@@ -18,7 +18,7 @@ export default function VisualizationDocs() {
         title="Visualization"
         description="Matplotlib/seaborn helpers for model diagnostics (confusion matrix, ROC, learning curve, residuals, decision boundary, feature importance) and exploratory data analysis."
         icon={<BarChart3 className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">

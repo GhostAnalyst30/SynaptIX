@@ -18,7 +18,7 @@ export default function DatasetsDocs() {
         title="Datasets"
         description="Bundled datasets ready for training, with the same loader signature as StatsLibX and ViewX — including polars backend and (X, y) array output."
         icon={<Database className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">

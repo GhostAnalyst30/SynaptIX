@@ -52,7 +52,7 @@ const modules = [
     icon: <Workflow className="w-6 h-6" />,
     title: "Pipelines",
     description:
-      "AutoPipeline: automatic ML end-to-end — detects the task, cleans, compares models, tunes and evaluates. Plus declarative step-based Pipelines.",
+      "AutoPipeline: leakage-free AutoML end-to-end — detects the task, compares models with cross-validation, tunes (grid, random, halving, Optuna), builds ensembles and evaluates on a held-out test set. Accepts pandas, polars and NumPy.",
     tags: ["autopipeline", "automl", "tune"],
     href: "/docs/pipeline",
   },
@@ -201,7 +201,7 @@ export default function HomePage() {
             </span>
             <span className="inline-flex items-center gap-1.5 text-xs font-mono text-accent2 bg-accent2/10 border border-accent2/20 px-3 py-1 rounded-full">
               <Zap className="w-3 h-3" />
-              New: Bayesian models + AutoPipeline
+              New: AutoML engine 2.0
             </span>
           </motion.div>
 

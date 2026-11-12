@@ -13,6 +13,7 @@ from typing import Literal, Optional
 import numpy as np
 import pandas as pd
 
+from ._dtypes import text_columns
 from .outliers import detect_outliers
 from .transformers import Encoder, Imputer, Scaler
 
@@ -70,7 +71,7 @@ class DataCleaner:
             outliers y columnas de alta cardinalidad.
         """
         num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+        cat_cols = text_columns(df)
 
         nulls = df.isnull().sum()
         nulls = nulls[nulls > 0].to_dict()
@@ -156,7 +157,7 @@ class DataCleaner:
         self.imputer_ = Imputer(strategy=self.impute_strategy)
         result = self.imputer_.fit_transform(result)
 
-        cat_cols = result.select_dtypes(include=["object", "category"]).columns.tolist()
+        cat_cols = text_columns(result)
         if cat_cols:
             self.encoder_ = Encoder(method=self.encode_method)
             result = self.encoder_.fit_transform(result, columns=cat_cols)

@@ -31,6 +31,7 @@ def check(name):
             except Exception as error:
                 FAILED.append((name, error))
                 print(f"[FALLO] {name}: {error}")
+                raise
 
         return wrapper
 
@@ -41,7 +42,7 @@ def check(name):
 def test_import():
     import synaptix as sx
 
-    assert sx.__version__ == "0.2.0"
+    assert sx.__version__ == "0.3.0"
     assert hasattr(sx, "supervised")
     assert hasattr(sx, "preprocessing")
 
@@ -607,7 +608,10 @@ def test_neural():
 if __name__ == "__main__":
     for name, func in list(globals().items()):
         if name.startswith("test_") and callable(func):
-            func()
+            try:
+                func()
+            except Exception:
+                pass
 
     print(f"\n{'=' * 50}")
     print(f"Pasaron: {len(PASSED)} | Fallaron: {len(FAILED)}")

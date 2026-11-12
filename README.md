@@ -11,6 +11,8 @@ pip install synaptix[bayes]     # + pymc (inferencia bayesiana completa)
 pip install synaptix[viewx]     # + ViewX (dashboards HTML, PDF, presentaciones)
 pip install synaptix[stats]     # + StatsLibX (diagnóstico estadístico de modelos)
 pip install synaptix[polars]    # + polars (DataFrames polars como entrada)
+pip install synaptix[automl]    # + polars, pyarrow, optuna, psutil (AutoML avanzado)
+pip install synaptix[explain]   # + shap
 pip install synaptix[all]       # todo
 ```
 
@@ -40,6 +42,16 @@ print(resultado.to_frame())                # métrica | train | test | diferenci
 
 `fit_evaluate(..., test_size=..., metrics=[...])` existe en todos los modelos: supervisados, clustering, PCA, redes neuronales (split temporal en `LSTMNet`) y agentes de refuerzo (donde `test_size` es la fracción de episodios de evaluación).
 
+## Novedades en v0.3.0 — AutoML Engine 2.0
+
+- `AutoPipeline` reescrito sobre el nuevo subpaquete `synaptix.automl`, **sin fuga de datos**: el test se separa sobre los datos crudos y el preprocesamiento se reajusta en cada fold (la versión anterior ajustaba la limpieza con todo el dataset).
+- Validación por estructura de datos (estratificada, repetida, por grupos/espacial, temporal o un splitter propio), métrica principal y secundarias, ranking con estado y errores, y búsqueda `grid` / `random` / `halving` / `optuna`.
+- Ensembles (voting, stacking, blending) que solo se eligen si mejoran la validación, explicabilidad (permutación, SHAP opcional, diagnósticos), registro reproducible de experimentos y reporte HTML/JSON.
+- Entradas pandas, polars (`DataFrame` y `LazyFrame`), NumPy y archivos; `engine="auto"` calibrado con benchmarks reproducibles en `benchmarks/`.
+- Benchmark frente a scikit-learn y FLAML (5 escenarios, 3 semillas, mismo split): SynaptIX iguala la calidad de un random search de scikit-learn y de FLAML con el mismo presupuesto de tiempo (diferencias dentro de la variación entre semillas), con más tiempo y memoria que un modelo único por defecto. Tablas en [`benchmarks/results/README.md`](benchmarks/results/README.md) y conclusiones en la sección 12 de la guía.
+- El notebook [`how_use_synaptix.ipynb`](how_use_synaptix.ipynb) compara cada modelo con su equivalente de scikit-learn (código, defaults, predicciones, métricas y tiempos).
+- Guía: [`docs/AUTOML.md`](docs/AUTOML.md) · Cambios: [`CHANGELOG.md`](CHANGELOG.md).
+
 ## Novedades en v0.2.0
 
 - `fit_evaluate(...)` en todos los modelos: divide, entrena y devuelve un `TrainTestResult` con métricas de train y test.
@@ -50,9 +62,10 @@ print(resultado.to_frame())                # métrica | train | test | diferenci
 
 | Módulo | Contenido |
 |---|---|
-| `synaptix.pipeline` | `AutoPipeline` (ML automático de principio a fin) y `Pipeline` declarativo por pasos |
+| `synaptix.automl` | Motor AutoML 2.0: `AutoPipeline`, perfilado de datos, detección de tarea, validación, tuning, ensembles, explicabilidad y experimentos |
+| `synaptix.pipeline` | `AutoPipeline` (fachada de `synaptix.automl`) y `Pipeline` declarativo por pasos |
 | `synaptix.preprocessing` | `Scaler`, `Encoder`, `Imputer`, `DataCleaner` (con `transform` para datos nuevos), `detect_outliers`, `remove_outliers`, `train_test_split` |
-| `synaptix.supervised` | 8 regresores, 7 clasificadores y 9 modelos bayesianos (BayesianRidge, ARD, procesos gaussianos, variantes de Naive Bayes, PyMC) |
+| `synaptix.supervised` | 11 regresores, 9 clasificadores y 9 modelos bayesianos (BayesianRidge, ARD, procesos gaussianos, variantes de Naive Bayes, PyMC) |
 | `synaptix.unsupervised` | `KMeans` (con codo y silhouette), `DBSCAN`, `HierarchicalClustering`, `GaussianMixture`, `PCA`, `TSNE` |
 | `synaptix.reinforcement` | `QLearningAgent`, `SARSAAgent`, `DQNAgent`, entorno `GridWorld` |
 | `synaptix.neural` | `MLP`, `CNN`, `LSTMNet` sobre Keras (requiere `synaptix[dl]`) |
@@ -74,14 +87,31 @@ import synaptix as sx
 df = sx.load_dataset("penguins")
 
 pipe = sx.AutoPipeline()          # el sistema se encarga de los parámetros
-pipe.fit(df, target="species")    # limpia, compara 7 modelos, ajusta y evalúa
-pipe.report()                     # ranking + métricas + matriz de confusión
+pipe.fit(df, target="species")    # perfila, separa test, compara 9 modelos sin fuga, ajusta y evalúa
+pipe.report()                     # 12 secciones: datos, ranking, validación, test, importancias...
 
-predicciones = pipe.predict(df_nuevo)   # acepta datos crudos (con nulos)
+predicciones = pipe.predict(df_nuevo)   # acepta datos crudos (con nulos y categorías nuevas)
 pipe.save("mi_pipeline.pkl")
 ```
 
-Todo es configurable: `AutoPipeline(models=["random_forest", "svm"], cv=10, tune=False, scale_method="robust", param_grids={"random_forest": {"n_estimators": [300]}})`.
+Todo es configurable:
+
+```python
+pipe = sx.AutoPipeline(
+    models=["random_forest", "logistic_regression", "svm"],
+    scoring="f1_weighted",            # métrica principal (+ secundarias en el ranking)
+    cv=5, cv_strategy="stratified",   # o "group", "timeseries", "repeated", un splitter propio...
+    tuning="random", n_iter=30,       # o "grid", "halving", "bayesian" (Optuna)
+    ensemble="stacking",              # solo se elige si mejora la validación cruzada
+    time_budget=300, n_jobs=-1, random_state=42,
+)
+pipe.fit(df, target="species", groups=None, time_column=None)
+pipe.ranking_, pipe.best_params_, pipe.results_, pipe.feature_importances_
+pipe.report(save="automl_report.html")   # o .json
+pipe.experiment_.to_json("experimento.json")
+```
+
+Guía completa (arquitectura, garantías metodológicas, motores de datos y benchmarks): [`docs/AUTOML.md`](docs/AUTOML.md).
 
 También hay un `Pipeline` declarativo por pasos, donde el sistema rellena los parámetros de cada paso:
 
@@ -100,7 +130,7 @@ pipe.model_, pipe.results_, pipe.best_params_   # modelo, métricas de test, par
 pipe.predict(df_nuevo)
 ```
 
-Atributos de `AutoPipeline` tras `fit`: `task_`, `cleaner_`, `ranking_`, `best_model_`, `best_name_`, `best_params_`, `results_`; métodos `predict`, `predict_proba`, `report(plot=True)`, `save(path)` y `AutoPipeline.load(path)`.
+Atributos de `AutoPipeline` tras `fit`: `task_`, `profile_`, `ranking_`, `best_model_`, `best_name_`, `best_params_`, `pipeline_`, `cv_score_`, `results_`, `feature_importances_`, `diagnostics_`, `timings_`, `experiment_`, `warnings_` y `cleaner_` (compatibilidad); métodos `predict`, `predict_proba`, `report(plot=True, save=None)`, `report_dict()`, `explain_shap(df)`, `save(path)` y `AutoPipeline.load(path)`.
 
 ### Modelos bayesianos (con incertidumbre)
 
@@ -324,7 +354,12 @@ df_pl = sx.load_dataset("iris", backend="polars")   # requiere synaptix[polars]
 model.fit(df_pl.drop("species"), df_pl["species"])
 
 X, y = sx.load_dataset("iris", return_X_y=True)     # misma firma que statslibx/viewx
+
+# AutoPipeline acepta polars DataFrame/LazyFrame (lectura diferida con proyección de columnas)
+sx.AutoPipeline(engine="polars").fit(df_pl.lazy(), target="species")
 ```
+
+Con `engine="auto"` polars se usa solo donde los benchmarks muestran ganancia (perfilado de datos de ≥ 1 millón de celdas); el entrenamiento siempre usa scikit-learn sobre pandas/NumPy. Ver la sección 9 de [`docs/AUTOML.md`](docs/AUTOML.md).
 
 ## API legacy (v0.x)
 

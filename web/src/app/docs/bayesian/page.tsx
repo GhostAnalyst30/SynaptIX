@@ -10,7 +10,7 @@ export default function BayesianDocs() {
         title="Bayesian Models"
         description="Uncertainty-aware models: Bayesian ridge, ARD, Gaussian processes, Naive Bayes variants and full PyMC models with prediction intervals — new in v0.1.7."
         icon={<Sigma className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">

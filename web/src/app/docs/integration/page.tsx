@@ -9,7 +9,7 @@ export default function IntegrationDocs() {
         title="Ecosystem — ViewX & StatsLibX"
         description="SynaptIX is the ML engine of the GhostAnalyst data ecosystem. Export results to ViewX dashboards and reports, run statistical diagnostics with StatsLibX — each library also works standalone."
         icon={<Boxes className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">

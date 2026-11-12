@@ -3,6 +3,7 @@ SynaptIX - Librería integral de Machine Learning para Python.
 Autor: Emmanuel Ascendra
 
 Submódulos:
+- ``synaptix.automl``          : motor AutoML (AutoPipeline 2.0, perfilado, tuning, tracking).
 - ``synaptix.pipeline``        : AutoPipeline y Pipeline declarativo (ML automático).
 - ``synaptix.preprocessing``   : limpieza, escalado, codificación, outliers.
 - ``synaptix.supervised``      : regresión, clasificación y modelos bayesianos.
@@ -34,10 +35,11 @@ Ejemplo rápido
 >>> model.evaluate(X_test, y_test)
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "Emmanuel Ascendra"
 
 from . import (
+    automl,
     metrics,
     model_selection,
     pipeline,
@@ -67,6 +69,7 @@ from .legacy import (
 
 __all__ = [
     # Submódulos
+    "automl",
     "pipeline",
     "preprocessing",
     "supervised",

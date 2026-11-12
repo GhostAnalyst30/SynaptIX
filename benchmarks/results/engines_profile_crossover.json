@@ -1,0 +1,110 @@
+{
+  "environment": {
+    "python": "3.15.1",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "processor": "Intel64 Family 6 Model 142 Stepping 9, GenuineIntel",
+    "logical_cpus": 4,
+    "ram_gb": 12.8,
+    "packages": {
+      "synaptix": "0.3.0 (C:\\Users\\Usuario\\Documents\\Emmanuel Ascendra\\GitHub_GhostAnalyst\\Librerias_Python\\Libreria_MachineLearning\\synaptix)",
+      "numpy": "2.5.4",
+      "pandas": "3.1.0",
+      "scikit-learn": "1.9.1",
+      "polars": "2.1.0",
+      "pyarrow": "26.0.1",
+      "optuna": "5.0.0",
+      "flaml": "2.8.0",
+      "pycaret": null,
+      "autogluon.tabular": null,
+      "psutil": "7.2.2"
+    },
+    "date": "2026-11-11 20:10:16"
+  },
+  "repeats": 3,
+  "results": [
+    {
+      "rows": 20000,
+      "stage": "perfilado",
+      "variant": "pandas",
+      "format": "memoria",
+      "file_mb": 0.0,
+      "seconds": 0.10261430000537075,
+      "seconds_stdev": 0.005513639829482952,
+      "peak_mb": 19.9,
+      "extra": {
+        "wall_seconds": 0.14456780000182334,
+        "wall_seconds_stdev": 0.010704847923671894
+      }
+    },
+    {
+      "rows": 20000,
+      "stage": "perfilado",
+      "variant": "polars",
+      "format": "memoria",
+      "file_mb": 0.0,
+      "seconds": 0.06392780000169296,
+      "seconds_stdev": 0.00809468622047693,
+      "peak_mb": 53.6,
+      "extra": {
+        "wall_seconds": 0.11842120000801515,
+        "wall_seconds_stdev": 0.008239868225584396
+      }
+    },
+    {
+      "rows": 20000,
+      "stage": "perfilado",
+      "variant": "polars_desde_pandas",
+      "format": "memoria",
+      "file_mb": 0.0,
+      "seconds": 0.08059280000452418,
+      "seconds_stdev": 0.0108508998069612,
+      "peak_mb": 47.2,
+      "extra": {
+        "wall_seconds": 0.12263090000487864,
+        "wall_seconds_stdev": 0.08637373748120786
+      }
+    },
+    {
+      "rows": 50000,
+      "stage": "perfilado",
+      "variant": "pandas",
+      "format": "memoria",
+      "file_mb": 0.0,
+      "seconds": 0.27818789999582805,
+      "seconds_stdev": 0.0066328641685209815,
+      "peak_mb": 44.4,
+      "extra": {
+        "wall_seconds": 0.3272358999965945,
+        "wall_seconds_stdev": 0.002517318437728338
+      }
+    },
+    {
+      "rows": 50000,
+      "stage": "perfilado",
+      "variant": "polars",
+      "format": "memoria",
+      "file_mb": 0.0,
+      "seconds": 0.11251799999445211,
+      "seconds_stdev": 0.008727279025929438,
+      "peak_mb": 102.1,
+      "extra": {
+        "wall_seconds": 0.18139240000164136,
+        "wall_seconds_stdev": 0.006214610576477851
+      }
+    },
+    {
+      "rows": 50000,
+      "stage": "perfilado",
+      "variant": "polars_desde_pandas",
+      "format": "memoria",
+      "file_mb": 0.0,
+      "seconds": 0.14028399999369867,
+      "seconds_stdev": 0.04791829248578343,
+      "peak_mb": 93.3,
+      "extra": {
+        "wall_seconds": 0.1968512000021292,
+        "wall_seconds_stdev": 0.04815511629152061
+      }
+    }
+  ]
+}

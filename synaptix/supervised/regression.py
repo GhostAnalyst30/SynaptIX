@@ -15,10 +15,13 @@ Ejemplo
 from __future__ import annotations
 
 from sklearn.ensemble import (
+    ExtraTreesRegressor as _SkETR,
     GradientBoostingRegressor as _SkGBR,
+    HistGradientBoostingRegressor as _SkHGBR,
     RandomForestRegressor as _SkRFR,
 )
 from sklearn.linear_model import (
+    ElasticNet as _SkElasticNet,
     Lasso as _SkLasso,
     LinearRegression as _SkLinear,
     Ridge as _SkRidge,
@@ -73,6 +76,73 @@ class LassoRegression(_RegressionModel):
 
     def __init__(self, alpha: float = 1.0, **kwargs):
         super().__init__(_SkLasso(alpha=alpha, **kwargs))
+
+
+class ElasticNetRegression(_RegressionModel):
+    """Regresión lineal con regularización combinada L1 + L2.
+
+    Parameters
+    ----------
+    alpha : float, default=1.0
+        Fuerza total de la regularización.
+    l1_ratio : float, default=0.5
+        Proporción L1 (1.0 equivale a Lasso, 0.0 a Ridge).
+    """
+
+    def __init__(self, alpha: float = 1.0, l1_ratio: float = 0.5, **kwargs):
+        super().__init__(_SkElasticNet(alpha=alpha, l1_ratio=l1_ratio, **kwargs))
+
+
+class ExtraTreesRegressor(_RegressionModel):
+    """Árboles extremadamente aleatorizados para regresión.
+
+    Parameters
+    ----------
+    n_estimators : int, default=100
+        Número de árboles.
+    max_depth : int, optional
+        Profundidad máxima de cada árbol.
+    """
+
+    def __init__(
+        self, n_estimators: int = 100, max_depth=None, random_state: int = 42, **kwargs
+    ):
+        super().__init__(
+            _SkETR(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                random_state=random_state,
+                **kwargs,
+            )
+        )
+
+
+class HistGradientBoostingRegressor(_RegressionModel):
+    """Gradient boosting basado en histogramas (rápido en datasets grandes).
+
+    Parameters
+    ----------
+    learning_rate : float, default=0.1
+        Tasa de aprendizaje.
+    max_iter : int, default=100
+        Máximo de iteraciones de boosting.
+    """
+
+    def __init__(
+        self,
+        learning_rate: float = 0.1,
+        max_iter: int = 100,
+        random_state: int = 42,
+        **kwargs,
+    ):
+        super().__init__(
+            _SkHGBR(
+                learning_rate=learning_rate,
+                max_iter=max_iter,
+                random_state=random_state,
+                **kwargs,
+            )
+        )
 
 
 class DecisionTreeRegressor(_RegressionModel):

@@ -32,6 +32,28 @@ jobs:
       - name: Ejecutar tests (núcleo)
         run: pytest tests/ -v
 
+  automl-extras:
+    # Sin las dependencias opcionales, los caminos de polars, optuna y shap
+    # solo se omiten; aquí se ejecutan de verdad.
+    runs-on: ubuntu-latest
+    env:
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar synaptix con extras automl y explain
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[automl,explain] pytest
+
+      - name: Ejecutar tests de AutoML
+        run: pytest tests/automl -v
+
   integracion:
     # Valida el contrato del payload entre synaptix, statslibx y viewx.
     runs-on: ubuntu-latest

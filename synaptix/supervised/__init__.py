@@ -2,13 +2,14 @@
 synaptix.supervised - Aprendizaje supervisado.
 
 Regresión:
-    LinearRegression, RidgeRegression, LassoRegression,
-    DecisionTreeRegressor, RandomForestRegressor,
-    GradientBoostingRegressor, SVR, KNNRegressor
+    LinearRegression, RidgeRegression, LassoRegression, ElasticNetRegression,
+    DecisionTreeRegressor, RandomForestRegressor, ExtraTreesRegressor,
+    GradientBoostingRegressor, HistGradientBoostingRegressor, SVR, KNNRegressor
 
 Clasificación:
     LogisticRegression, DecisionTreeClassifier, RandomForestClassifier,
-    GradientBoostingClassifier, SVMClassifier, KNNClassifier, NaiveBayes
+    ExtraTreesClassifier, GradientBoostingClassifier,
+    HistGradientBoostingClassifier, SVMClassifier, KNNClassifier, NaiveBayes
 
 Bayesianos (con incertidumbre en las predicciones):
     BayesianRidgeRegression, ARDRegression, GaussianProcessRegressor,
@@ -38,7 +39,9 @@ from .bayesian import (
 )
 from .classification import (
     DecisionTreeClassifier,
+    ExtraTreesClassifier,
     GradientBoostingClassifier,
+    HistGradientBoostingClassifier,
     KNNClassifier,
     LogisticRegression,
     NaiveBayes,
@@ -47,7 +50,10 @@ from .classification import (
 )
 from .regression import (
     DecisionTreeRegressor,
+    ElasticNetRegression,
+    ExtraTreesRegressor,
     GradientBoostingRegressor,
+    HistGradientBoostingRegressor,
     KNNRegressor,
     LassoRegression,
     LinearRegression,
@@ -61,16 +67,21 @@ __all__ = [
     "LinearRegression",
     "RidgeRegression",
     "LassoRegression",
+    "ElasticNetRegression",
     "DecisionTreeRegressor",
     "RandomForestRegressor",
+    "ExtraTreesRegressor",
     "GradientBoostingRegressor",
+    "HistGradientBoostingRegressor",
     "SVR",
     "KNNRegressor",
     # Clasificación
     "LogisticRegression",
     "DecisionTreeClassifier",
     "RandomForestClassifier",
+    "ExtraTreesClassifier",
     "GradientBoostingClassifier",
+    "HistGradientBoostingClassifier",
     "SVMClassifier",
     "KNNClassifier",
     "NaiveBayes",

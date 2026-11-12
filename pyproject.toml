@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synaptix"
-version = "0.2.0"
+version = "0.3.0"
 description = "Librería integral de Machine Learning para Python: supervisado, no supervisado, refuerzo, redes neuronales y preprocesamiento."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -52,7 +52,12 @@ viz = ["seaborn>=0.11.0", "plotly>=5.0.0"]
 viewx = ["viewx>=0.3.0", "plotly>=5.0.0"]
 stats = ["statslibx>=0.4.0"]
 polars = ["polars>=0.20.0", "pyarrow>=10.0.0"]
+automl = ["polars>=0.20.0", "pyarrow>=10.0.0", "optuna>=3.0.0", "psutil>=5.8.0"]
+explain = ["shap>=0.42.0"]
 all = [
+    "optuna>=3.0.0",
+    "psutil>=5.8.0",
+    "shap>=0.42.0",
     "tensorflow>=2.12.0",
     "pymc>=5.0.0",
     "nltk>=3.6.0",

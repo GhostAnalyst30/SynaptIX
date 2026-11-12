@@ -10,7 +10,7 @@ export default function UnsupervisedDocs() {
         title="Unsupervised Models"
         description="Clustering and dimensionality reduction: KMeans with elbow and silhouette analysis, DBSCAN, hierarchical clustering, Gaussian mixtures, PCA with explained variance and TSNE."
         icon={<Boxes className="w-6 h-6" />}
-        version="0.2.0"
+        version="0.3.0"
       />
 
       <section className="mb-12">
