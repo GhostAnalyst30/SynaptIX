@@ -272,6 +272,9 @@ class AutoPipeline:
         pre_dispatch: str = "2*n_jobs",
         memory_optimization: bool = False,
         cache: bool = False,
+        extended: bool = False,
+        extended_max_features: int = 3,
+        solve_warning: bool = False,
         random_state: Optional[int] = 42,
         verbose: bool = True,
     ):
@@ -308,6 +311,9 @@ class AutoPipeline:
         self.pre_dispatch = pre_dispatch
         self.memory_optimization = memory_optimization
         self.cache = cache
+        self.extended = extended
+        self.extended_max_features = extended_max_features
+        self.solve_warning = solve_warning
         self.random_state = random_state
         self.verbose = verbose
         self._validate_params()
@@ -324,7 +330,7 @@ class AutoPipeline:
         "impute_strategy", "encode_method", "scale_method", "max_onehot_categories",
         "drop_constant", "feature_selection", "feature_selection_k", "ensemble",
         "ensemble_top_k", "explain", "ignore_columns", "n_jobs", "pre_dispatch",
-        "memory_optimization", "cache", "random_state", "verbose",
+        "memory_optimization", "cache", "extended", "extended_max_features", "solve_warning", "random_state", "verbose",
     )
 
     def get_params(self) -> Dict[str, Any]:
@@ -395,10 +401,16 @@ class AutoPipeline:
 
     def fit(
         self,
-        data: Any,
-        target: Union[str, int, Sequence],
+        data: Any = None,
+        target: Union[str, int, Sequence] = None,
         groups: Optional[Union[str, Sequence]] = None,
         time_column: Optional[str] = None,
+        test_val: Optional[Union[float, int]] = None,
+        data_train: Any = None,
+        data_val: Any = None,
+        data_test: Any = None,
+        associations: Optional[Dict[str, str]] = None,
+        extended_max_features: Optional[int] = None,
     ) -> "AutoPipeline":
         """Ejecuta el AutoML completo.
 
@@ -437,6 +449,10 @@ class AutoPipeline:
         self._input_kind, self._engine_used = loaded.kind, loaded.engine
         df = loaded.frame
         self.target_ = target
+        if associations:
+            for new_col, expr in associations.items():
+                df[new_col] = df.eval(expr)
+        self.data = df.copy()
 
         group_col = groups if isinstance(groups, str) else None
         for col in filter(None, [group_col, time_column]):
@@ -982,6 +998,10 @@ class AutoPipeline:
         with open(path, "rb") as file:
             return pickle.load(file)
 
+    @property
+    def best_model(self):
+        return self.best_model_
+
     def _check_fitted(self) -> None:
         if self.pipeline_ is None:
             raise RuntimeError("El pipeline no está entrenado. Llama a fit(df, target).")
@@ -1001,3 +1021,11 @@ def _split_distributions(user: Optional[dict]):
         space = {k: ("cat", v) if isinstance(v, list) else v for k, v in user.items()}
         return space, None
     return None, dict(user)
+
+
+
+
+
+
+
+

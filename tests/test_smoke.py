@@ -42,7 +42,7 @@ def check(name):
 def test_import():
     import synaptix as sx
 
-    assert sx.__version__ == "0.3.0"
+    assert sx.__version__ == "0.3.1"
     assert hasattr(sx, "supervised")
     assert hasattr(sx, "preprocessing")
 
@@ -620,3 +620,4 @@ if __name__ == "__main__":
             print(f"  FALLO {name}: {error}")
         sys.exit(1)
     print("Todos los tests de humo pasaron.")
+

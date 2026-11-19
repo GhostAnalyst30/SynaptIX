@@ -35,7 +35,7 @@ Ejemplo rápido
 >>> model.evaluate(X_test, y_test)
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __author__ = "Emmanuel Ascendra"
 
 from . import (
@@ -155,3 +155,4 @@ def welcome():
     print("  - synaptix.visualization   : gráficos de análisis")
     print("  - synaptix.datasets        : datasets de ejemplo\n")
     print("Repositorio: https://github.com/GhostAnalyst30/SynaptIX")
+
