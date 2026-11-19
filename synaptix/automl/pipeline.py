@@ -43,7 +43,7 @@ from .data.intelligence import DataProfile, leakage_checks, profile_data, train_
 from .ensemble import build_ensemble
 from .evaluation.cross_validation import holdout_split, make_cv
 from .evaluation.metrics import MetricSpec, holdout_metrics, resolve_metrics
-from .exceptions import AutoMLError
+from .exceptions import AutoMLError, MissingDependencyError
 from .experiments import ExperimentRecord, to_jsonable
 from .explain import (
     CAUSAL_NOTE,
@@ -58,6 +58,13 @@ from .features import (
     build_preprocessor,
     make_model_pipeline,
     output_feature_names,
+)
+from .feature_engineering import FeatureEngineeringTransformer
+from .data_quality import (
+    ROW_LEVEL_CODES,
+    analyze_and_solve_data_quality,
+    SolverStrategy,
+    DataQualityReport,
 )
 from .parallel import native_thread_limits, resolve_n_jobs
 from .profiling import Profiler
@@ -195,6 +202,27 @@ class AutoPipeline:
     cache : bool, default=False
         Cachea el preprocesamiento entre combinaciones de hiperparámetros
         (``joblib.Memory`` en un directorio temporal que se borra al final).
+    associations : dict, optional
+        Variables derivadas a crear: ``{"nombre_nueva": "expresion"}``.
+        Las expresiones usan sintaxis Python segura (aritmética, funciones numpy).
+        Se aplican en fit() y se replican automáticamente en predict().
+    fe_handle_div_zero : {"error", "inf", "nan", "zero"}, default="nan"
+        Qué hacer ante división por cero en variables derivadas.
+    fe_handle_invalid : {"error", "nan"}, default="nan"
+        Qué hacer ante resultados inválidos (inf/nan) en variables derivadas.
+    warning_strategy : {"none", "safe", "aggressive"}, default="none"
+        Estrategia de corrección de calidad de datos:
+        - "none": solo analiza, no modifica datos
+        - "safe": imputación, infinitos, columnas constantes, filas duplicadas
+        - "aggressive": incluye safe + outliers, categorías raras, conversión tipos
+
+        La detección y las correcciones que estiman parámetros (medianas,
+        cuantiles, frecuencias) se calculan **solo con las filas de
+        entrenamiento**, después del holdout: el test nunca influye en cómo se
+        imputan los datos. Solo las acciones que eliminan filas (duplicados)
+        se aplican antes de separar, porque son deterministas.
+    warning_report : bool, default=False
+        Si True, incluye reporte detallado de calidad en ``report()["data_quality"]``.
     random_state : int, default=42
         Semilla de splits, modelos y búsquedas.
     verbose : bool, default=True
@@ -221,6 +249,19 @@ class AutoPipeline:
         Media y desviación de la métrica principal del modelo final en CV.
     results_ : dict
         Métricas del conjunto de prueba.
+    selected_features_ : list de str
+        Columnas que recibe el modelo tras el preprocesamiento (one-hot
+        incluido).
+    removed_features_ : list de str
+        Columnas preparadas que ningún selector conservó.
+    feature_selection_info_ : dict
+        Método de selección, número de columnas y justificación de los descartes.
+    feature_importance_ : DataFrame o None
+        Importancia preferida: permutación en el holdout si se calculó, si no
+        la nativa del modelo.
+    feature_importance_source_ : {"permutation_test", "model"} o None
+    data_quality_report_ : DataQualityReport o None
+        Diagnóstico y acciones de calidad (con ``warning_strategy``).
     feature_importances_ : DataFrame o None
     diagnostics_ : dict o None
     timings_ : dict
@@ -272,9 +313,11 @@ class AutoPipeline:
         pre_dispatch: str = "2*n_jobs",
         memory_optimization: bool = False,
         cache: bool = False,
-        extended: bool = False,
-        extended_max_features: int = 3,
-        solve_warning: bool = False,
+        associations: Optional[Dict[str, str]] = None,
+        fe_handle_div_zero: str = "nan",
+        fe_handle_invalid: str = "nan",
+        warning_strategy: Literal["none", "safe", "aggressive"] = "none",
+        warning_report: bool = False,
         random_state: Optional[int] = 42,
         verbose: bool = True,
     ):
@@ -305,15 +348,20 @@ class AutoPipeline:
         self.feature_selection_k = feature_selection_k
         self.ensemble = ensemble
         self.ensemble_top_k = ensemble_top_k
-        self.explain = explain
+        # El parámetro público sigue llamándose ``explain`` (get_params), pero
+        # no puede ocupar el atributo: ``pipe.explain()`` es el método de
+        # diagnóstico de explicabilidad.
+        self._explain_enabled = bool(explain)
         self.ignore_columns = list(ignore_columns or [])
         self.n_jobs = n_jobs
         self.pre_dispatch = pre_dispatch
         self.memory_optimization = memory_optimization
         self.cache = cache
-        self.extended = extended
-        self.extended_max_features = extended_max_features
-        self.solve_warning = solve_warning
+        self.associations = associations or {}
+        self.fe_handle_div_zero = fe_handle_div_zero
+        self.fe_handle_invalid = fe_handle_invalid
+        self.warning_strategy = warning_strategy
+        self.warning_report = warning_report
         self.random_state = random_state
         self.verbose = verbose
         self._validate_params()
@@ -330,12 +378,21 @@ class AutoPipeline:
         "impute_strategy", "encode_method", "scale_method", "max_onehot_categories",
         "drop_constant", "feature_selection", "feature_selection_k", "ensemble",
         "ensemble_top_k", "explain", "ignore_columns", "n_jobs", "pre_dispatch",
-        "memory_optimization", "cache", "extended", "extended_max_features", "solve_warning", "random_state", "verbose",
+        "memory_optimization", "cache", "associations", "fe_handle_div_zero",
+        "fe_handle_invalid", "warning_strategy", "warning_report", "random_state", "verbose",
     )
 
     def get_params(self) -> Dict[str, Any]:
         """Parámetros de configuración del pipeline."""
-        return {name: getattr(self, name) for name in self._PUBLIC_PARAMS}
+        params = {name: getattr(self, name) for name in self._PUBLIC_PARAMS
+                  if name != "explain"}
+        params["explain"] = self._explain_enabled
+        return params
+
+    @property
+    def explain_enabled(self) -> bool:
+        """Si ``fit`` calcula explicabilidad automáticamente (parámetro ``explain``)."""
+        return self._explain_enabled
 
     def _validate_params(self) -> None:
         if self.task not in (None, "classification", "regression"):
@@ -347,6 +404,21 @@ class AutoPipeline:
         if self.ensemble not in (None, "voting", "stacking", "blending"):
             raise AutoMLError(f"ensemble debe ser 'voting', 'stacking', 'blending' o None "
                               f"(recibido: {self.ensemble!r}).")
+        if self.fe_handle_div_zero not in ("error", "inf", "nan", "zero"):
+            raise AutoMLError(
+                f"fe_handle_div_zero debe ser uno de ('error', 'inf', 'nan', 'zero'), "
+                f"recibido: {self.fe_handle_div_zero!r}"
+            )
+        if self.fe_handle_invalid not in ("error", "nan"):
+            raise AutoMLError(
+                f"fe_handle_invalid debe ser 'error' o 'nan', "
+                f"recibido: {self.fe_handle_invalid!r}"
+            )
+        if self.warning_strategy not in ("none", "safe", "aggressive"):
+            raise AutoMLError(
+                f"warning_strategy debe ser 'none', 'safe' o 'aggressive' "
+                f"(recibido: {self.warning_strategy!r})"
+            )
         resolve_preset(self.mode)
         resolve_n_jobs(self.n_jobs)
 
@@ -387,6 +459,13 @@ class AutoPipeline:
         self._eval: Dict[str, Any] = {}
         self._input_kind: Optional[str] = None
         self._engine_used: Optional[str] = None
+        self.fe_transformer_: Optional[FeatureEngineeringTransformer] = None
+        self.data_quality_report_: Optional[DataQualityReport] = None
+        self.selected_features_: List[str] = []
+        self.removed_features_: List[str] = []
+        self.feature_selection_info_: Dict[str, Any] = {}
+        self.feature_importance_: Optional[pd.DataFrame] = None
+        self.feature_importance_source_: Optional[str] = None
 
     def _log(self, message: str) -> None:
         if self.verbose:
@@ -405,12 +484,6 @@ class AutoPipeline:
         target: Union[str, int, Sequence] = None,
         groups: Optional[Union[str, Sequence]] = None,
         time_column: Optional[str] = None,
-        test_val: Optional[Union[float, int]] = None,
-        data_train: Any = None,
-        data_val: Any = None,
-        data_test: Any = None,
-        associations: Optional[Dict[str, str]] = None,
-        extended_max_features: Optional[int] = None,
     ) -> "AutoPipeline":
         """Ejecuta el AutoML completo.
 
@@ -449,10 +522,37 @@ class AutoPipeline:
         self._input_kind, self._engine_used = loaded.kind, loaded.engine
         df = loaded.frame
         self.target_ = target
-        if associations:
-            for new_col, expr in associations.items():
-                df[new_col] = df.eval(expr)
-        self.data = df.copy()
+
+        # 1b. Feature Engineering ---------------------------------------
+        if self.associations:
+            self.fe_transformer_ = FeatureEngineeringTransformer(
+                associations=self.associations,
+                handle_division_by_zero=self.fe_handle_div_zero,
+                handle_invalid=self.fe_handle_invalid,
+            )
+            df = self.fe_transformer_.fit_transform(df)
+        else:
+            self.fe_transformer_ = None
+
+        # 1c. Calidad de datos: solo operaciones a nivel de fila ---------
+        # Quitar filas duplicadas (o sin target) es determinista: no estima
+        # parámetros con los datos. Las correcciones que sí aprenden
+        # parámetros se ajustan más abajo, después del holdout y solo con las
+        # filas de entrenamiento.
+        self.data_quality_report_ = None
+        row_actions: List[Any] = []
+        if self.warning_strategy != "none":
+            df, row_report = analyze_and_solve_data_quality(
+                df=df,
+                target=target,
+                task=self.task,
+                strategy=self.warning_strategy,
+                codes=ROW_LEVEL_CODES,
+            )
+            row_actions = list(row_report.actions_taken)
+            for action in row_actions:
+                self._log(f"  [DataQuality] {action.action.value} en "
+                          f"'{action.column}': {action.justification}")
 
         group_col = groups if isinstance(groups, str) else None
         for col in filter(None, [group_col, time_column]):
@@ -528,6 +628,42 @@ class AutoPipeline:
             train_idx, test_idx, self.holdout_ = holdout_split(
                 len(X), self.test_size, self.task_, y, group_values, is_temporal,
                 self.random_state)
+        # 2b. Calidad de datos: parámetros estimados solo con train ------
+        # La detección y las correcciones se ajustan con las filas de
+        # entrenamiento del holdout; luego se aplican a train y a test. Así la
+        # mediana de imputación (o los cuantiles de outliers) no contiene
+        # información del conjunto de prueba.
+        if self.warning_strategy != "none":
+            with profiler.stage("calidad_datos"):
+                base = df.loc[mask].copy()
+                reference = base.iloc[train_idx]
+                original_shape = base.shape
+                base, report = analyze_and_solve_data_quality(
+                    df=base,
+                    target=target,
+                    task=self.task_,
+                    strategy=self.warning_strategy,
+                    reference=reference,
+                    exclude_codes=ROW_LEVEL_CODES,
+                )
+                report.actions_taken = row_actions + list(report.actions_taken)
+                report.original_shape = original_shape
+                report.final_shape = base.shape
+                self.data_quality_report_ = report
+                for action in report.actions_taken:
+                    self._log(f"  [DataQuality] {action.action.value} en "
+                              f"'{action.column}': {action.justification}")
+                for issue in report.issues:
+                    if issue.severity.value in ("warning", "critical"):
+                        self.warnings_.append(
+                            f"[DataQuality:{issue.code}] "
+                            f"{issue.column or 'global'}: {issue.message}"
+                        )
+                kept = [c for c in self.feature_columns_ if c in base.columns]
+                if len(kept) != len(self.feature_columns_):
+                    self.feature_columns_ = kept
+                X = base[self.feature_columns_]
+                self.feature_types_ = infer_feature_types(X)
         X_train, y_train = X.iloc[train_idx], y[train_idx]
         X_test, y_test = X.iloc[test_idx], y[test_idx]
         groups_train = None if group_values is None else group_values[train_idx]
@@ -649,7 +785,7 @@ class AutoPipeline:
             self.results_ = {}
 
         # 9. Explicabilidad --------------------------------------------
-        if self.explain:
+        if self.explain_enabled:
             with profiler.stage("explicabilidad"):
                 self._explain(final, X_test, y_test, specs)
 
@@ -837,10 +973,61 @@ class AutoPipeline:
         wrapper.fitted = True
         wrapper.feature_names_ = names
         self.best_model_ = wrapper
+        self._set_feature_selection_attributes(names)
         transformer = final[:-1]
         self.cleaner_ = _CleanerAdapter(transformer, self.feature_columns_,
                                         names or [f"x{i}" for i in range(
                                             getattr(model, "n_features_in_", 0))])
+
+    def _set_feature_selection_attributes(self, selected: Optional[List[str]]) -> None:
+        """Registra qué columnas entran al modelo final y cuáles se descartaron.
+
+        ``selected_features_`` son las columnas que recibe el modelo **después**
+        del preprocesamiento (una categórica aporta una columna por categoría
+        one-hot): es lo que el modelo realmente usa. ``removed_features_`` son
+        las columnas preparadas que ningún selector conservó, con su
+        justificación en ``feature_selection_info_``.
+        """
+        prepared: List[str] = []
+        try:
+            raw = self.pipeline_.named_steps["prep"].get_feature_names_out()
+            prepared = [str(n).split("__", 1)[-1] for n in raw]
+        except Exception:  # pragma: no cover - preprocesador sin nombres
+            prepared = []
+        selected = list(selected or [])
+        chosen = set(selected)
+        self.selected_features_ = selected
+        self.removed_features_ = [n for n in prepared if n not in chosen]
+        reasons: List[str] = []
+        if self.drop_constant:
+            reasons.append("varianza cero en el fold de entrenamiento (drop_constant)")
+        if self.feature_selection == "variance":
+            reasons.append("varianza cero (feature_selection='variance')")
+        elif self.feature_selection == "kbest":
+            reasons.append("no superó el test F univariante del umbral k")
+        elif self.feature_selection == "model":
+            reasons.append("importancia por debajo de la mediana del ExtraTrees")
+        self.feature_selection_info_ = {
+            "method": self.feature_selection,
+            "drop_constant": bool(self.drop_constant),
+            "n_prepared": len(prepared),
+            "n_selected": len(selected),
+            "removed": list(self.removed_features_),
+            "justification": "; ".join(reasons) or "sin selección de features",
+        }
+        # Importancia nativa y coeficientes no necesitan el conjunto de prueba:
+        # se calculan siempre para que ``explain()`` funcione con explain=False.
+        try:
+            self.model_importances_ = model_importances(self.pipeline_)
+        except Exception:  # pragma: no cover - modelos sin importancia
+            self.model_importances_ = None
+        try:
+            self.coefficients_ = coefficients(self.pipeline_, self.classes_)
+        except Exception:  # pragma: no cover - modelos sin coef_
+            self.coefficients_ = None
+        if self.model_importances_ is not None:
+            self.feature_importance_ = self.model_importances_
+            self.feature_importance_source_ = "model"
 
     def _explain(self, final, X_test, y_test, specs) -> None:
         self.model_importances_ = model_importances(final)
@@ -861,6 +1048,9 @@ class AutoPipeline:
         else:
             self.notes_.append("Sin conjunto de prueba no se calcula la importancia por "
                                "permutación (sobre train sería optimista).")
+        if self.feature_importances_ is not None:
+            self.feature_importance_ = self.feature_importances_
+            self.feature_importance_source_ = "permutation_test"
 
     def _build_experiment(self, X: pd.DataFrame, profile: DataProfile) -> ExperimentRecord:
         config = to_jsonable({k: v for k, v in self.get_params().items() if k != "models"})
@@ -920,6 +1110,12 @@ class AutoPipeline:
             frame = pd.DataFrame(arr, columns=self.feature_columns_)
         else:
             raise AutoMLError("predict acepta DataFrames (pandas/polars) o arrays NumPy.")
+
+        # Aplicar feature engineering PRIMERO para crear columnas derivadas
+        if self.fe_transformer_ is not None:
+            frame = self.fe_transformer_.transform(frame)
+
+        # Ahora validar que tenemos todas las columnas necesarias (originales + derivadas)
         missing = [c for c in self.feature_columns_ if c not in frame.columns]
         if missing:
             raise AutoMLError(f"Faltan columnas usadas en el entrenamiento: {missing}")
@@ -973,6 +1169,95 @@ class AutoPipeline:
         self._check_fitted()
         return build_report(self)
 
+    def explain(self, df: Any = None, max_samples: int = 200) -> dict:
+        """Diagnóstico de explicabilidad del modelo finalmente entrenado.
+
+        Devuelve las importancias globales (permutación en el conjunto de
+        prueba, nativas del modelo y coeficientes), el diagnóstico de errores,
+        la calibración de probabilidades cuando aplica y, si se pasa ``df``,
+        valores SHAP locales (requiere ``synaptix[explain]``).
+
+        No reentrena ni ajusta nada: usa lo calculado en ``fit``. Las
+        importancias miden contribución predictiva, no causalidad.
+
+        Parameters
+        ----------
+        df : DataFrame, optional
+            Filas a explicar localmente en el espacio de features ya
+            transformadas por el modelo (preprocesamiento incluido).
+        max_samples : int, default=200
+            Muestra máxima para SHAP.
+        """
+        self._check_fitted()
+        # Con ``explain=False`` los diagnósticos no se calcularon en ``fit``;
+        # se derivan aquí de las predicciones del holdout ya almacenadas
+        # (no se reajusta nada ni se vuelve a evaluar el modelo).
+        diagnostics_block = self.diagnostics_
+        if diagnostics_block is None and self._eval:
+            try:
+                diagnostics_block = diagnostics(
+                    self.task_, self._eval["y_true"], self._eval["y_pred"],
+                    labels=self.classes_, index=self._eval["index"])
+            except Exception as exc:  # pragma: no cover - salvaguarda
+                self._warn(f"No se pudo calcular el diagnóstico en explain(): {exc}")
+                diagnostics_block = None
+        result: Dict[str, Any] = {
+            "task": self.task_,
+            "model": self.best_name_,
+            "target": self.target_,
+            "global": {
+                "permutation_test": self.feature_importances_,
+                "model_native": self.model_importances_,
+                "coefficients": self.coefficients_,
+                "preferred": self.feature_importance_source_,
+                "selected_features": list(self.selected_features_),
+                "removed_features": list(self.removed_features_),
+                "selection": dict(self.feature_selection_info_),
+            },
+            "diagnostics": diagnostics_block,
+            "calibration": self._calibration(),
+            "note": CAUSAL_NOTE,
+            "local": None,
+        }
+        if df is not None:
+            try:
+                result["local"] = shap_values(
+                    self.pipeline_, self._new_frame(df), max_samples=max_samples,
+                    random_state=self.random_state)
+            except MissingDependencyError as exc:
+                result["local_note"] = str(exc)
+        return result
+
+    def _calibration(self) -> Optional[Dict[str, Any]]:
+        """Calibración de probabilidades sobre el conjunto de prueba.
+
+        Brier score multiclase (error cuadrático medio entre probabilidad y
+        indicador de la clase real) y, en binario, la curva de fiabilidad en
+        10 bins. El conjunto de prueba ya se usó para reportar métricas, así
+        que esto describe el modelo, no lo reajusta.
+        """
+        if self.task_ != "classification" or not self._eval:
+            return None
+        proba = self._eval.get("proba")
+        if proba is None:
+            return None
+        y_true = np.asarray(self._eval["y_true"])
+        classes = np.asarray(self.classes_)
+        onehot = (y_true[:, None] == classes[None, :]).astype(float)
+        brier = float(np.mean(np.sum((proba - onehot) ** 2, axis=1)))
+        block: Dict[str, Any] = {"brier_score": brier, "bins": None}
+        if len(classes) == 2:
+            from sklearn.calibration import calibration_curve
+
+            positive = (y_true == classes[-1])
+            observed, predicted = calibration_curve(
+                positive, proba[:, classes.tolist().index(classes[-1])],
+                n_bins=10, strategy="uniform")
+            block["bins"] = pd.DataFrame({"prob_predicha": predicted,
+                                          "frecuencia_observada": observed})
+            block["clase_positiva"] = str(classes[-1])
+        return block
+
     def explain_shap(self, df: Any, max_samples: int = 200) -> dict:
         """Valores SHAP del modelo final (requiere ``synaptix[explain]``)."""
         self._check_fitted()
@@ -989,14 +1274,37 @@ class AutoPipeline:
         No se guardan los datos de entrenamiento ni las features de prueba.
         """
         self._check_fitted()
+        # Crear una copia ligera sin datos de entrenamiento
+        state = self.__getstate_for_pickle__()
         with open(path, "wb") as file:
-            pickle.dump(self, file)
+            pickle.dump(state, file)
+
+    def __getstate_for_pickle__(self) -> dict:
+        """Estado para serialización: excluye datos pesados y no necesarios."""
+        state = self.__dict__.copy()
+        # Eliminar referencias a datos de entrenamiento/prueba
+        keys_to_remove = [
+            "data",  # datos crudos (si existe)
+            "_eval",  # datos de evaluación
+            "profiler_",  # profiler con datos
+        ]
+        for key in keys_to_remove:
+            state.pop(key, None)
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        """Restaurar estado desde pickle."""
+        self.__dict__.update(state)
 
     @classmethod
     def load(cls, path: str) -> "AutoPipeline":
         """Carga un pipeline guardado con :meth:`save`."""
         with open(path, "rb") as file:
-            return pickle.load(file)
+            state = pickle.load(file)
+        # Crear instancia sin llamar a __init__
+        obj = cls.__new__(cls)
+        obj.__setstate__(state)
+        return obj
 
     @property
     def best_model(self):

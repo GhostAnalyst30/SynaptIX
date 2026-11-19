@@ -1,5 +1,41 @@
 # Registro de cambios
 
+## Sin publicar — AutoPipeline: feature engineering, calidad y explicabilidad
+
+### Corregido (metodología)
+
+- **Calidad de datos estimada con el test**: `warning_strategy` analizaba e
+  imputaba con el dataset completo antes del holdout, así que la mediana de
+  imputación (y los cuantiles de outliers) contenían filas de prueba. Ahora
+  solo las acciones que eliminan filas (duplicados) ocurren antes del split;
+  la detección y las correcciones que aprenden parámetros se ajustan con las
+  filas de entrenamiento y se aplican después a train y test.
+- **`fe_handle_div_zero` no hacía nada**: el manejador dependía de un
+  `except ZeroDivisionError` que NumPy nunca lanza (devuelve inf/nan).
+  `"zero"` y `"error"` no tenían efecto. La política se aplica ahora en el
+  evaluador AST: `nan`, `inf`, `zero` y `error` funcionan igual en `fit` y en
+  `predict`.
+- Una expresión encadenada que dividía por otra variable derivada se validaba
+  con ceros de relleno y podía fallar en `fit` aunque los datos fueran válidos.
+
+### Añadido
+
+- `AutoPipeline.explain(df=None)`: importancias (permutación en test, nativas
+  y coeficientes), diagnósticos de error, calibración (Brier + curva de
+  fiabilidad en binario) y SHAP local opcional. No reentrena nada.
+- `selected_features_`, `removed_features_`, `feature_selection_info_` y
+  `feature_importance_` / `feature_importance_source_` para auditar la
+  selección de variables del modelo final.
+- `explain_shap()` sigue disponible; `model_importances_` y `coefficients_` se
+  calculan aunque `explain=False`.
+
+### Cambios de API
+
+- El parámetro de constructor `explain` (bool) se guarda en
+  `_explain_enabled` y se expone con `explain_enabled`; el nombre `explain`
+  queda para el método `explain()`. `get_params()["explain"]` sigue devolviendo
+  el booleano.
+
 ## 0.3.0 — AutoML Engine 2.0
 
 Guía completa: [`docs/AUTOML.md`](docs/AUTOML.md). Benchmarks:

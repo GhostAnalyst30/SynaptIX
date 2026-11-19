@@ -130,7 +130,33 @@ pipe.model_, pipe.results_, pipe.best_params_   # modelo, métricas de test, par
 pipe.predict(df_nuevo)
 ```
 
-Atributos de `AutoPipeline` tras `fit`: `task_`, `profile_`, `ranking_`, `best_model_`, `best_name_`, `best_params_`, `pipeline_`, `cv_score_`, `results_`, `feature_importances_`, `diagnostics_`, `timings_`, `experiment_`, `warnings_` y `cleaner_` (compatibilidad); métodos `predict`, `predict_proba`, `report(plot=True, save=None)`, `report_dict()`, `explain_shap(df)`, `save(path)` y `AutoPipeline.load(path)`.
+Atributos de `AutoPipeline` tras `fit`: `task_`, `profile_`, `ranking_`, `best_model_`, `best_name_`, `best_params_`, `pipeline_`, `cv_score_`, `results_`, `feature_importances_` (permutación en el holdout), `feature_importance_` (importancia preferida: permutación si existe, si no la nativa), `feature_importance_source_`, `selected_features_`, `removed_features_`, `feature_selection_info_`, `diagnostics_`, `data_quality_report_`, `timings_`, `experiment_`, `warnings_` y `cleaner_` (compatibilidad); métodos `predict`, `predict_proba`, `report(plot=True, save=None)`, `report_dict()`, `explain(df=None)`, `explain_shap(df)`, `save(path)` y `AutoPipeline.load(path)`.
+
+### Variables derivadas y calidad de datos
+
+```python
+pipe = sx.AutoPipeline(
+    associations={
+        "balance": "ingresos - gastos",
+        "ratio_gastos": "gastos / ingresos",
+        "edad_cuadratica": "edad ** 2",
+    },
+    fe_handle_div_zero="nan",   # "nan" | "inf" | "zero" | "error"
+    warning_strategy="safe",    # "none" (solo diagnostica) | "safe" | "aggressive"
+    warning_report=True,        # añade `13_calidad_datos` a report_dict()
+)
+pipe.fit(df, target="resultado")   # usa solo filas originales
+pipe.predict(df_nuevo)             # reconstruye las derivadas automáticamente
+pipe.selected_features_            # columnas que recibe el modelo (one-hot incluido)
+pipe.removed_features_             # columnas descartadas y por qué (feature_selection_info_)
+pipe.explain()                     # importancias, diagnósticos y calibración
+pipe.data_quality_report_.to_dict()
+```
+
+Las expresiones se evalúan sobre un AST (sin `eval()`) y admiten aritmética,
+`log`, `sqrt`, `exp`, `abs`, potencias y `where`. La imputación y demás
+correcciones que estiman parámetros se ajustan **solo con las filas de
+entrenamiento**; el conjunto de prueba nunca interviene.
 
 ### Modelos bayesianos (con incertidumbre)
 

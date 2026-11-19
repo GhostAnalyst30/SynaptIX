@@ -34,7 +34,7 @@ SELECTION_NOTE = (
 
 
 def build_report(pipe: "AutoPipeline") -> Dict[str, Any]:
-    """Contenido del reporte en 12 secciones."""
+    """Contenido del reporte en 12-13 secciones."""
     profile = pipe.profile_
     spec = pipe.metric_specs_[0]
     statuses = pipe.ranking_["estado"].value_counts().to_dict()
@@ -93,6 +93,12 @@ def build_report(pipe: "AutoPipeline") -> Dict[str, Any]:
                        "n_jobs": pipe.n_jobs},
         "12_advertencias": {"advertencias": pipe.warnings_, "notas": pipe.notes_},
     }
+    
+    # Sección 13: Data Quality Report (si se solicitó)
+    if getattr(pipe, "warning_report", False) and pipe.data_quality_report_ is not None:
+        dq = pipe.data_quality_report_
+        report["13_calidad_datos"] = dq.to_dict()
+    
     return report
 
 
@@ -165,6 +171,20 @@ def render_text(report: Dict[str, Any]) -> str:
     for item in w["notas"]:
         add(f"     * {item}")
     add(f"     * {v['nota']}")
+    
+    # Sección 13: Data Quality Report
+    if "13_calidad_datos" in report:
+        dq = report["13_calidad_datos"]
+        add(f"13. Calidad Datos: estrategia={dq['strategy']}, "
+            f"{dq['original_shape'][0]}->{dq['final_shape'][0]} filas, "
+            f"{dq['original_shape'][1]}->{dq['final_shape'][1]} cols")
+        add(f"     Issues: {dq['summary']['total_issues']} "
+            f"({dq['summary']['by_severity']})")
+        add(f"     Acciones: {dq['summary']['actions_executed']} ejecutadas")
+        if dq["actions_taken"]:
+            for action in dq["actions_taken"]:
+                add(f"     - {action['action']} en '{action['column']}': "
+                    f"{action['rows_affected']} filas, {action['justification'][:80]}")
     return "\n".join(lines)
 
 
