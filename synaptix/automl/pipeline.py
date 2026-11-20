@@ -22,7 +22,8 @@ from __future__ import annotations
 import pickle
 import shutil
 import tempfile
-from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Union
+import time
+from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Set, Union
 
 import numpy as np
 import pandas as pd
@@ -68,8 +69,13 @@ from .data_quality import (
 )
 from .parallel import native_thread_limits, resolve_n_jobs
 from .profiling import Profiler
+from .selection.feature_subset_search import FeatureSubsetSearch
 from .selection.ranking import (
     CandidateResult,
+    STATUS_FAILED,
+    STATUS_OK,
+    STATUS_PARTIAL,
+    STATUS_SKIPPED,
     build_ranking,
     evaluate_candidate,
     evaluate_candidates,
@@ -182,6 +188,25 @@ class AutoPipeline:
         Selección de features dentro de cada fold.
     feature_selection_k : int o float, optional
         Número (o proporción) de features para ``kbest``.
+    feature_search : {"none", "exhaustive", "random", "forward", "backward"}, default="none"
+        Búsqueda de subconjuntos de variables independiente por algoritmo.
+        - "none": desactiva la búsqueda (evalúa todas las features).
+        - "exhaustive": evalúa todas las combinaciones posibles en [min_features, max_features].
+        - "random": evalúa combinaciones aleatorias no duplicadas.
+        - "forward": selección secuencial progresiva hacia adelante (SFS).
+        - "backward": eliminación secuencial progresiva hacia atrás (SBS).
+    feature_search_min_features : int, default=1
+        Cantidad mínima de variables por subconjunto evaluado.
+    feature_search_max_features : int o None, default=None
+        Cantidad máxima de variables por subconjunto. Si es None, usa todas las disponibles.
+    feature_search_max_combinations : int o None, default=None
+        Límite máximo de combinaciones evaluadas por modelo.
+    feature_search_strategy : {"auto", "exhaustive", "random", "forward", "backward"}, default="auto"
+        Estrategia heurística cuando feature_search='auto' según el número de variables.
+    feature_search_metric : str o MetricSpec, default="auto"
+        Métrica utilizada para seleccionar la mejor combinación. "auto" usa la métrica principal.
+    feature_search_n_jobs : int o None, default=None
+        Paralelización de la búsqueda de variables. Si es None, usa n_jobs.
     ensemble : {"voting", "stacking", "blending"}, optional
         Construye un ensemble con los mejores modelos; solo se elige si
         mejora la validación cruzada.
@@ -247,6 +272,44 @@ class AutoPipeline:
         Preprocesamiento ajustado (compatibilidad).
     cv_score_ : dict
         Media y desviación de la métrica principal del modelo final en CV.
+    X_train_ : pandas.DataFrame
+        Features de entrenamiento con el índice original: los datos crudos
+        (más ``associations`` y las correcciones de ``warning_strategy``),
+        no la matriz transformada por one-hot, escalado o imputación.
+    X_test_ : pandas.DataFrame
+        Features de prueba, con el índice original. Vacío (mismas columnas)
+        si ``test_size=None``.
+    y_train_ : pandas.Series
+        Target de entrenamiento alineado con ``X_train_``.
+    y_test_ : pandas.Series
+        Target de prueba alineado con ``X_test_``. Vacío si
+        ``test_size=None``.
+    data_train_ : pandas.DataFrame
+        ``X_train_`` más la columna target, conservando el índice original.
+    data_test_ : pandas.DataFrame
+        ``X_test_`` más la columna target, conservando el índice original.
+        Vacío (con las mismas columnas) si ``test_size=None``.
+    best_data_train_ : pandas.DataFrame
+        Solo las variables de ``best_features_`` más el target, para train.
+    best_data_test_ : pandas.DataFrame
+        Solo las variables de ``best_features_`` más el target, para test.
+        Vacío (con las mismas columnas) si ``test_size=None``.
+    data_ : tuple de (DataFrame, DataFrame)
+        Atajo ``(data_train_, data_test_)``. Requiere haber llamado a ``fit``.
+    best_data_ : tuple de (DataFrame, DataFrame)
+        Atajo ``(best_data_train_, best_data_test_)``. Requiere ``fit``.
+    data : tuple de (DataFrame, DataFrame)
+        Alias de ``data_``.
+    best_features_ : list de str o None
+        Columnas que componen el subconjunto de variables óptimo para el modelo ganador.
+    best_score_ : float o None
+        Puntuación media de validación cruzada del modelo ganador en su subconjunto óptimo.
+    feature_search_results_ : DataFrame o None
+        Registro exhaustivo de combinaciones evaluadas por modelo con sus métricas.
+    feature_search_ranking_ : DataFrame o None
+        Ranking ordenado de las combinaciones evaluadas por rendimiento en CV.
+    feature_search_summary_ : dict o None
+        Resumen cuantitativo de la búsqueda de subconjuntos de variables.
     results_ : dict
         Métricas del conjunto de prueba.
     selected_features_ : list de str
@@ -276,6 +339,15 @@ class AutoPipeline:
     >>> pipe.fit(df, target="species")
     >>> pipe.report()
     >>> predicciones = pipe.predict(df_nuevo)
+
+    Recuperar exactamente los datos usados en el entrenamiento (índices
+    originales, target incluido y sin one-hot ni escalado):
+
+    >>> train, test = pipe.data_          # columnas de feature_columns_ + target
+    >>> train, test = pipe.data           # alias
+    >>> best_train, best_test = pipe.best_data_   # solo best_features_ + target
+    >>> list(best_train.columns) == list(pipe.best_features_) + [pipe.target_]
+    True
     """
 
     def __init__(
@@ -305,6 +377,13 @@ class AutoPipeline:
         drop_constant: bool = False,
         feature_selection: Optional[str] = None,
         feature_selection_k: Optional[Union[int, float]] = None,
+        feature_search: Literal["none", "exhaustive", "random", "forward", "backward"] = "none",
+        feature_search_min_features: int = 1,
+        feature_search_max_features: Optional[int] = None,
+        feature_search_max_combinations: Optional[int] = None,
+        feature_search_strategy: str = "auto",
+        feature_search_metric: str = "auto",
+        feature_search_n_jobs: Optional[int] = None,
         ensemble: Optional[str] = None,
         ensemble_top_k: int = 3,
         explain: bool = True,
@@ -346,6 +425,13 @@ class AutoPipeline:
         self.drop_constant = drop_constant
         self.feature_selection = feature_selection
         self.feature_selection_k = feature_selection_k
+        self.feature_search = feature_search
+        self.feature_search_min_features = feature_search_min_features
+        self.feature_search_max_features = feature_search_max_features
+        self.feature_search_max_combinations = feature_search_max_combinations
+        self.feature_search_strategy = feature_search_strategy
+        self.feature_search_metric = feature_search_metric
+        self.feature_search_n_jobs = feature_search_n_jobs
         self.ensemble = ensemble
         self.ensemble_top_k = ensemble_top_k
         # El parámetro público sigue llamándose ``explain`` (get_params), pero
@@ -376,7 +462,10 @@ class AutoPipeline:
         "cv_repeats", "scoring", "metrics", "tune", "tuning", "n_iter", "tune_top_k",
         "time_budget", "param_grids", "param_distributions", "test_size",
         "impute_strategy", "encode_method", "scale_method", "max_onehot_categories",
-        "drop_constant", "feature_selection", "feature_selection_k", "ensemble",
+        "drop_constant", "feature_selection", "feature_selection_k",
+        "feature_search", "feature_search_min_features", "feature_search_max_features",
+        "feature_search_max_combinations", "feature_search_strategy",
+        "feature_search_metric", "feature_search_n_jobs", "ensemble",
         "ensemble_top_k", "explain", "ignore_columns", "n_jobs", "pre_dispatch",
         "memory_optimization", "cache", "associations", "fe_handle_div_zero",
         "fe_handle_invalid", "warning_strategy", "warning_report", "random_state", "verbose",
@@ -418,6 +507,21 @@ class AutoPipeline:
             raise AutoMLError(
                 f"warning_strategy debe ser 'none', 'safe' o 'aggressive' "
                 f"(recibido: {self.warning_strategy!r})"
+            )
+        if self.feature_search not in ("none", "exhaustive", "random", "forward", "backward", "auto", None, False, True):
+            raise AutoMLError(
+                f"feature_search debe ser uno de ('none', 'exhaustive', 'random', 'forward', 'backward') o None "
+                f"(recibido: {self.feature_search!r})."
+            )
+        if self.feature_search_min_features < 1:
+            raise AutoMLError("feature_search_min_features debe ser >= 1.")
+        if (
+            self.feature_search_max_features is not None
+            and self.feature_search_max_features < self.feature_search_min_features
+        ):
+            raise AutoMLError(
+                f"feature_search_max_features ({self.feature_search_max_features}) "
+                f"no puede ser menor que feature_search_min_features ({self.feature_search_min_features})."
             )
         resolve_preset(self.mode)
         resolve_n_jobs(self.n_jobs)
@@ -461,11 +565,52 @@ class AutoPipeline:
         self._engine_used: Optional[str] = None
         self.fe_transformer_: Optional[FeatureEngineeringTransformer] = None
         self.data_quality_report_: Optional[DataQualityReport] = None
+        self.best_features_: Optional[List[str]] = None
+        self.best_score_: Optional[float] = None
+        self.feature_search_results_: Optional[pd.DataFrame] = None
+        self.feature_search_ranking_: Optional[pd.DataFrame] = None
+        self.feature_search_summary_: Optional[Dict[str, Any]] = None
         self.selected_features_: List[str] = []
         self.removed_features_: List[str] = []
         self.feature_selection_info_: Dict[str, Any] = {}
         self.feature_importance_: Optional[pd.DataFrame] = None
         self.feature_importance_source_: Optional[str] = None
+        self.data_train_ = None
+        self.data_test_ = None
+        self.best_data_train_ = None
+        self.best_data_test_ = None
+        self.X_train_ = None
+        self.X_test_ = None
+        self.y_train_ = None
+        self.y_test_ = None
+
+    @property
+    def data_(self):
+        """``(data_train_, data_test_)``: datos completos usados en ``fit``.
+
+        Incluyen todas las features preparadas (``feature_columns_``) y el
+        target, con el índice original. No son la matriz one-hot, escalada
+        ni imputada. Si ``test_size=None``, el segundo elemento es un
+        DataFrame vacío con las mismas columnas.
+        """
+        self._check_fitted()
+        return self.data_train_, self.data_test_
+
+    @property
+    def best_data_(self):
+        """``(best_data_train_, best_data_test_)``: datos del modelo ganador.
+
+        Contienen solo ``best_features_`` más el target, con el índice
+        original. Si ``test_size=None``, el segundo elemento es un DataFrame
+        vacío con las columnas del modelo.
+        """
+        self._check_fitted()
+        return self.best_data_train_, self.best_data_test_
+
+    @property
+    def data(self):
+        """Alias de :attr:`data_`."""
+        return self.data_
 
     def _log(self, message: str) -> None:
         if self.verbose:
@@ -666,6 +811,24 @@ class AutoPipeline:
                 self.feature_types_ = infer_feature_types(X)
         X_train, y_train = X.iloc[train_idx], y[train_idx]
         X_test, y_test = X.iloc[test_idx], y[test_idx]
+        self.X_train_ = X_train
+        self.X_test_ = X_test
+
+        self.y_train_ = pd.Series(
+            y_train, index=X_train.index, name=target
+        )
+
+        self.y_test_ = pd.Series(
+            y_test, index=X_test.index, name=target
+        )
+
+        self.data_train_ = pd.concat(
+            [self.X_train_, self.y_train_], axis=1
+        )
+
+        self.data_test_ = pd.concat(
+            [self.X_test_, self.y_test_], axis=1
+        )
         groups_train = None if group_values is None else group_values[train_idx]
         self.n_train_, self.n_test_ = len(X_train), len(X_test)
         if self.task_ == "classification":
@@ -723,11 +886,88 @@ class AutoPipeline:
                                        else candidate.estimator, sparse, memory)
 
         try:
-            with native_thread_limits(self.n_jobs), profiler.stage("seleccion_modelos"):
-                results = evaluate_candidates(
-                    candidates, build, X_train, y_train, cv_splitter, specs,
-                    groups=groups_train, n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch,
-                    budget=budget, log=self._log if self.verbose else None)
+            is_feature_search = self.feature_search not in (None, "none", False)
+            by_model_features: Dict[str, List[str]] = {}
+
+            if is_feature_search:
+                with native_thread_limits(self.n_jobs), profiler.stage("seleccion_modelos"):
+                    fs_strategy = (
+                        self.feature_search
+                        if self.feature_search not in ("auto", True)
+                        else self.feature_search_strategy
+                    )
+                    if self.feature_search_metric != "auto":
+                        fs_specs = resolve_metrics(
+                            self.feature_search_metric, None, self.task_, labels=self.classes_
+                        )
+                    else:
+                        fs_specs = specs
+
+                    fs_engine = FeatureSubsetSearch(
+                        strategy=fs_strategy,
+                        min_features=self.feature_search_min_features,
+                        max_features=self.feature_search_max_features,
+                        max_combinations=self.feature_search_max_combinations,
+                        metric=fs_specs[0],
+                        n_jobs=self.feature_search_n_jobs or self.n_jobs,
+                        random_state=self.random_state or 42,
+                    )
+
+                    start_fs_time = time.perf_counter()
+                    candidate_results = []
+
+                    for candidate in candidates:
+                        if budget.exhausted and any(r.usable for r in candidate_results):
+                            candidate_results.append(
+                                CandidateResult(candidate.name, STATUS_SKIPPED,
+                                                error="Presupuesto de tiempo agotado.")
+                            )
+                            continue
+
+                        sparse = self.memory_optimization and candidate.supports_sparse
+
+                        def build_sub(est, sub_cols):
+                            return self._make_pipeline_for_features(est, sub_cols, sparse, memory)
+
+                        cand_res, cand_features = fs_engine.search_for_model(
+                            candidate_name=candidate.name,
+                            estimator=candidate.estimator,
+                            pipeline_builder=build_sub,
+                            X=X_train,
+                            y=y_train,
+                            cv=cv_splitter,
+                            specs=specs,
+                            features=self.feature_columns_,
+                            groups=groups_train,
+                            budget=budget,
+                            log=self._log if self.verbose else None,
+                        )
+                        candidate_results.append(cand_res)
+                        by_model_features[candidate.name] = cand_features
+                        if self.verbose:
+                            if cand_res.usable:
+                                mean_val = specs[0].to_display(np.mean(cand_res.scores[specs[0].key]))
+                                self._log(
+                                    f"      {candidate.name:<24} {specs[0].display}={float(mean_val):.4f} "
+                                    f"({len(cand_features)} features: {cand_features})"
+                                )
+                            else:
+                                self._log(f"      {candidate.name:<24} FALLÓ: {cand_res.error[:80]}")
+
+                    total_fs_time = time.perf_counter() - start_fs_time
+                    fs_engine.finalize(specs[0], self.feature_columns_, total_fs_time, budget=budget)
+
+                    self.feature_search_results_ = fs_engine.results_df_
+                    self.feature_search_ranking_ = fs_engine.ranking_df_
+                    self.feature_search_summary_ = fs_engine.summary_
+                    results = candidate_results
+            else:
+                with native_thread_limits(self.n_jobs), profiler.stage("seleccion_modelos"):
+                    results = evaluate_candidates(
+                        candidates, build, X_train, y_train, cv_splitter, specs,
+                        groups=groups_train, n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch,
+                        budget=budget, log=self._log if self.verbose else None)
+
             self.candidate_results_ = results
             best = pick_best(results, specs)
             n_ok = sum(r.usable for r in results)
@@ -740,7 +980,8 @@ class AutoPipeline:
 
             by_name = {c.name: c for c in candidates}
             chosen = self._tune(results, by_name, build, X_train, y_train, cv_splitter,
-                                specs, groups_train, cfg, budget, profiler)
+                                specs, groups_train, cfg, budget, profiler,
+                                by_model_features=by_model_features if is_feature_search else None)
 
             if self.ensemble:
                 chosen = self._try_ensemble(results, by_name, chosen, X_train, y_train,
@@ -748,15 +989,34 @@ class AutoPipeline:
                                             is_temporal, profiler)
 
             # 7. Entrenamiento final -----------------------------------
+            self.best_features_ = chosen.get("features", list(self.feature_columns_))
+            self.best_score_ = chosen["cv_mean"]
+            self._prune_fe_transformer()
+
             with native_thread_limits(self.n_jobs), profiler.stage("entrenamiento_final"):
                 final = clone(chosen["pipeline"])
-                final.fit(X_train, y_train)
+                final.fit(X_train[self.best_features_], y_train)
                 final.memory = None
         finally:
             if cache_dir is not None:
                 shutil.rmtree(cache_dir, ignore_errors=True)
 
         self.pipeline_ = final
+        self.best_data_train_ = pd.concat(
+            [
+                self.X_train_[self.best_features_],
+                self.y_train_
+            ],
+            axis=1
+        )
+
+        self.best_data_test_ = pd.concat(
+            [
+                self.X_test_[self.best_features_],
+                self.y_test_
+            ],
+            axis=1
+        )
         self.best_name_ = chosen["name"]
         self.best_params_ = chosen.get("tuned_params")
         self.cv_score_ = {"mean": chosen["cv_mean"], "std": chosen["cv_std"],
@@ -770,12 +1030,12 @@ class AutoPipeline:
         # 8. Evaluación en prueba --------------------------------------
         if len(X_test):
             with profiler.stage("inferencia_test"):
-                y_pred = final.predict(X_test)
-                proba = final.predict_proba(X_test) if (
+                y_pred = final.predict(X_test[self.best_features_])
+                proba = final.predict_proba(X_test[self.best_features_]) if (
                     self.task_ == "classification" and hasattr(final, "predict_proba")) else None
             self.results_ = holdout_metrics(self.task_, y_test, y_pred, proba,
                                             labels=self.classes_)
-            raw = specs[0].scorer(final, X_test, y_test)
+            raw = specs[0].scorer(final, X_test[self.best_features_], y_test)
             self.test_score_ = float(specs[0].to_display(raw))
             self._eval = {"y_true": np.asarray(y_test), "y_pred": np.asarray(y_pred),
                           "proba": proba, "index": np.asarray(X_test.index)}
@@ -787,7 +1047,7 @@ class AutoPipeline:
         # 9. Explicabilidad --------------------------------------------
         if self.explain_enabled:
             with profiler.stage("explicabilidad"):
-                self._explain(final, X_test, y_test, specs)
+                self._explain(final, X_test[self.best_features_] if len(X_test) else X_test, y_test, specs)
 
         self.timings_ = profiler.to_dict()
         self.experiment_ = self._build_experiment(X, profile)
@@ -829,8 +1089,65 @@ class AutoPipeline:
                                    drop_constant=self.drop_constant,
                                    selector=selector, memory=memory)
 
+    def _make_pipeline_for_features(
+        self, estimator: Any, sub_features: Sequence[str], sparse: bool, memory: Any = None
+    ) -> Any:
+        sub_set = set(sub_features)
+        sub_types = {
+            kind: [c for c in cols if c in sub_set]
+            for kind, cols in self.feature_types_.items()
+        }
+        sub_types = {k: v for k, v in sub_types.items() if v}
+        preprocessor = build_preprocessor(
+            sub_types,
+            impute_strategy=self.impute_strategy,
+            scale_method=self.scale_method,
+            encode_method=self.encode_method,
+            max_onehot_categories=self.max_onehot_categories,
+            sparse=sparse,
+        )
+        selector = build_feature_selector(self.feature_selection, self.task_,
+                                          self.feature_selection_k, self.random_state)
+        return make_model_pipeline(preprocessor, clone(estimator),
+                                   drop_constant=self.drop_constant,
+                                   selector=selector, memory=memory)
+
+    def _prune_fe_transformer(self) -> None:
+        """Conserva en fe_transformer_ solo las variables derivadas necesarias para best_features_."""
+        if self.fe_transformer_ is None or not self.associations:
+            return
+        expected = set(self.best_features_ if self.best_features_ is not None else self.feature_columns_)
+        needed: Set[str] = set()
+        to_check = [f for f in expected if f in self.associations]
+        dep_map = {d.name: d.depends_on for d in self.fe_transformer_.derived_features_}
+
+        while to_check:
+            cur = to_check.pop()
+            if cur not in needed:
+                needed.add(cur)
+                deps = dep_map.get(cur, set())
+                for dep in deps:
+                    if dep in self.associations and dep not in needed:
+                        to_check.append(dep)
+
+        if not needed:
+            self.fe_transformer_ = None
+        elif len(needed) < len(self.associations):
+            pruned_associations = {k: v for k, v in self.associations.items() if k in needed}
+            old_fe = self.fe_transformer_
+            self.fe_transformer_ = FeatureEngineeringTransformer(
+                associations=pruned_associations,
+                handle_division_by_zero=self.fe_handle_div_zero,
+                handle_invalid=self.fe_handle_invalid,
+            )
+            self.fe_transformer_.derived_features_ = [
+                d for d in old_fe.derived_features_ if d.name in needed
+            ]
+            self.fe_transformer_.output_columns_ = list(pruned_associations.keys())
+
     def _tune(self, results, by_name, build, X, y, cv, specs, groups, cfg, budget,
-              profiler) -> Dict[str, Any]:
+              profiler, by_model_features: Optional[Dict[str, List[str]]
+              ] = None) -> Dict[str, Any]:
         """Optimiza los mejores modelos y devuelve el elegido por CV."""
         key = specs[0].key
         usable = sorted((r for r in results if r.usable),
@@ -839,11 +1156,16 @@ class AutoPipeline:
 
         def entry(result: CandidateResult) -> Dict[str, Any]:
             scores = result.scores[key]
-            return {"name": result.name, "pipeline": build(by_name[result.name]),
+            feats = (by_model_features or {}).get(result.name, list(self.feature_columns_))
+            pipe = (self._make_pipeline_for_features(by_name[result.name].estimator, feats,
+                                                    self.memory_optimization and by_name[result.name].supports_sparse)
+                    if by_model_features else build(by_name[result.name]))
+            return {"name": result.name, "pipeline": pipe,
                     "cv_raw": float(np.mean(scores)),
                     "cv_mean": float(specs[0].to_display(np.mean(scores))),
                     "cv_std": float(np.std(scores)), "source": "default",
-                    "tuned_params": None, "estimator": by_name[result.name].estimator}
+                    "tuned_params": None, "estimator": by_name[result.name].estimator,
+                    "features": feats}
 
         chosen = entry(best)
         strategy = self.tuning if self.tune else None
@@ -870,9 +1192,17 @@ class AutoPipeline:
                 local_strategy = strategy
                 if user_grid and strategy == "auto":
                     local_strategy = "grid"
+
+                feats = (by_model_features or {}).get(result.name, list(self.feature_columns_))
+                pipe_to_tune = (
+                    self._make_pipeline_for_features(candidate.estimator, feats,
+                                                     self.memory_optimization and candidate.supports_sparse)
+                    if by_model_features else build(candidate)
+                )
+                X_tune = X[feats]
                 try:
                     outcome = tune_pipeline(
-                        build(candidate), X, y, cv, specs[0].scorer, local_strategy,
+                        pipe_to_tune, X_tune, y, cv, specs[0].scorer, local_strategy,
                         grid=grid, space=space, distributions=distributions,
                         n_iter=cfg["n_iter"], groups=groups, n_jobs=self.n_jobs,
                         pre_dispatch=self.pre_dispatch, random_state=self.random_state,
@@ -902,6 +1232,7 @@ class AutoPipeline:
                         "cv_std": outcome.best_std, "source": f"tuning:{outcome.strategy}",
                         "tuned_params": outcome.best_params,
                         "estimator": outcome.estimator.steps[-1][1],
+                        "features": feats,
                     }
         return chosen
 
@@ -923,11 +1254,12 @@ class AutoPipeline:
             self._warn("Ensemble omitido: se necesitan al menos 2 modelos válidos.")
             return chosen
         name = f"ensemble_{self.ensemble}"
+        ens_features = chosen.get("features", list(self.feature_columns_))
         with native_thread_limits(self.n_jobs), profiler.stage("ensemble"):
             estimator = build_ensemble(self.ensemble, self.task_, members, self.random_state,
                                        shuffle=not is_temporal)
-            pipeline = self._make_pipeline(estimator, sparse=False, memory=memory)
-            result = evaluate_candidate(name, pipeline, X, y, cv, specs, groups=groups,
+            pipeline = self._make_pipeline_for_features(estimator, ens_features, sparse=False, memory=memory)
+            result = evaluate_candidate(name, pipeline, X[ens_features], y, cv, specs, groups=groups,
                                         n_jobs=self.n_jobs, pre_dispatch=self.pre_dispatch)
         self.candidate_results_.append(result)
         info = {"name": name, "members": [m for m, _ in members], "status": result.status}
@@ -949,7 +1281,7 @@ class AutoPipeline:
         return {"name": name, "pipeline": pipeline, "cv_raw": raw,
                 "cv_mean": info["cv_mean"], "cv_std": info["cv_std"],
                 "source": "ensemble", "tuned_params": chosen.get("tuned_params"),
-                "estimator": estimator}
+                "estimator": estimator, "features": ens_features}
 
     def _set_compat_attributes(self, chosen: Dict[str, Any]) -> None:
         final = self.pipeline_
@@ -975,7 +1307,8 @@ class AutoPipeline:
         self.best_model_ = wrapper
         self._set_feature_selection_attributes(names)
         transformer = final[:-1]
-        self.cleaner_ = _CleanerAdapter(transformer, self.feature_columns_,
+        cols_for_cleaner = self.best_features_ if self.best_features_ is not None else self.feature_columns_
+        self.cleaner_ = _CleanerAdapter(transformer, cols_for_cleaner,
                                         names or [f"x{i}" for i in range(
                                             getattr(model, "n_features_in_", 0))])
 
@@ -1007,8 +1340,12 @@ class AutoPipeline:
             reasons.append("no superó el test F univariante del umbral k")
         elif self.feature_selection == "model":
             reasons.append("importancia por debajo de la mediana del ExtraTrees")
+        if self.feature_search not in (None, "none", False):
+            reasons.append(f"búsqueda de subconjuntos de variables (feature_search='{self.feature_search}')")
         self.feature_selection_info_ = {
             "method": self.feature_selection,
+            "feature_search": self.feature_search,
+            "best_features": list(self.best_features_ or []),
             "drop_constant": bool(self.drop_constant),
             "n_prepared": len(prepared),
             "n_selected": len(selected),
@@ -1083,6 +1420,7 @@ class AutoPipeline:
             ranking=to_jsonable(self.ranking_.to_dict(orient="records")),
             tuning=tuning,
             ensemble=self.ensemble_result_ or {},
+            feature_search=to_jsonable(self.feature_search_summary_ or {}),
             selected_model=self.best_name_ or "",
             validation=dict(self.cv_score_),
             test_metrics=dict(self.results_ or {}),
@@ -1097,6 +1435,7 @@ class AutoPipeline:
 
     def _new_frame(self, data: Any) -> pd.DataFrame:
         kind = input_kind(data)
+        expected_cols = self.best_features_ if self.best_features_ is not None else self.feature_columns_
         if kind == "pandas":
             frame = data
         elif kind == "polars":
@@ -1105,9 +1444,12 @@ class AutoPipeline:
             frame = polars_to_pandas(data.collect())
         elif kind == "numpy":
             arr = np.asarray(data)
-            if arr.ndim != 2 or arr.shape[1] != len(self.feature_columns_):
-                raise AutoMLError(f"Se esperaban {len(self.feature_columns_)} columnas.")
-            frame = pd.DataFrame(arr, columns=self.feature_columns_)
+            if arr.ndim != 2 or (arr.shape[1] != len(expected_cols) and arr.shape[1] != len(self.feature_columns_)):
+                raise AutoMLError(f"Se esperaban {len(expected_cols)} columnas.")
+            if arr.shape[1] == len(expected_cols):
+                frame = pd.DataFrame(arr, columns=expected_cols)
+            else:
+                frame = pd.DataFrame(arr, columns=self.feature_columns_)
         else:
             raise AutoMLError("predict acepta DataFrames (pandas/polars) o arrays NumPy.")
 
@@ -1116,10 +1458,10 @@ class AutoPipeline:
             frame = self.fe_transformer_.transform(frame)
 
         # Ahora validar que tenemos todas las columnas necesarias (originales + derivadas)
-        missing = [c for c in self.feature_columns_ if c not in frame.columns]
+        missing = [c for c in expected_cols if c not in frame.columns]
         if missing:
             raise AutoMLError(f"Faltan columnas usadas en el entrenamiento: {missing}")
-        return frame[self.feature_columns_]
+        return frame[expected_cols]
 
     def predict(self, df: Any) -> np.ndarray:
         """Predice sobre datos nuevos crudos con las reglas aprendidas en train.
@@ -1268,13 +1610,24 @@ class AutoPipeline:
     def causal_note(self) -> str:
         return CAUSAL_NOTE
 
+    _DATA_ATTRIBUTES = (
+        "data_train_",
+        "data_test_",
+        "best_data_train_",
+        "best_data_test_",
+        "X_train_",
+        "X_test_",
+        "y_train_",
+        "y_test_",
+    )
+
     def save(self, path: str) -> None:
         """Guarda el pipeline completo (preprocesamiento + modelo + metadatos).
 
-        No se guardan los datos de entrenamiento ni las features de prueba.
+        No se guardan los datos de entrenamiento ni de prueba
+        (``data_``/``best_data_`` quedan disponibles solo en memoria).
         """
         self._check_fitted()
-        # Crear una copia ligera sin datos de entrenamiento
         state = self.__getstate_for_pickle__()
         with open(path, "wb") as file:
             pickle.dump(state, file)
@@ -1282,19 +1635,26 @@ class AutoPipeline:
     def __getstate_for_pickle__(self) -> dict:
         """Estado para serialización: excluye datos pesados y no necesarios."""
         state = self.__dict__.copy()
-        # Eliminar referencias a datos de entrenamiento/prueba
         keys_to_remove = [
-            "data",  # datos crudos (si existe)
-            "_eval",  # datos de evaluación
-            "profiler_",  # profiler con datos
+            "data",
+            "_eval",
+            "profiler_",
+            *self._DATA_ATTRIBUTES,
         ]
         for key in keys_to_remove:
             state.pop(key, None)
         return state
 
+    def __getstate__(self) -> dict:
+        return self.__getstate_for_pickle__()
+
     def __setstate__(self, state: dict) -> None:
         """Restaurar estado desde pickle."""
         self.__dict__.update(state)
+        self.__dict__.setdefault("_eval", {})
+        self.__dict__.setdefault("profiler_", None)
+        for name in self._DATA_ATTRIBUTES:
+            self.__dict__.setdefault(name, None)
 
     @classmethod
     def load(cls, path: str) -> "AutoPipeline":

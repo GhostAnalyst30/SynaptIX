@@ -98,7 +98,16 @@ def build_report(pipe: "AutoPipeline") -> Dict[str, Any]:
     if getattr(pipe, "warning_report", False) and pipe.data_quality_report_ is not None:
         dq = pipe.data_quality_report_
         report["13_calidad_datos"] = dq.to_dict()
-    
+
+    # Sección Feature Subset Search (si se ejecutó)
+    if getattr(pipe, "feature_search_summary_", None) is not None:
+        report["feature_search"] = {
+            "resumen": pipe.feature_search_summary_,
+            "ranking": pipe.feature_search_ranking_.head(10) if pipe.feature_search_ranking_ is not None else None,
+            "mejor_global": pipe.feature_search_summary_.get("best_overall"),
+            "mejor_por_modelo": pipe.feature_search_summary_.get("best_by_model"),
+        }
+
     return report
 
 
@@ -185,6 +194,30 @@ def render_text(report: Dict[str, Any]) -> str:
             for action in dq["actions_taken"]:
                 add(f"     - {action['action']} en '{action['column']}': "
                     f"{action['rows_affected']} filas, {action['justification'][:80]}")
+
+    # Sección Feature Subset Search
+    if "feature_search" in report and report["feature_search"]:
+        fs = report["feature_search"]
+        summ = fs.get("resumen", {})
+        add("\n--- Feature Subset Search ---")
+        add(f"Estrategia     : {summ.get('strategy_used')} ({summ.get('termination_reason')})")
+        add(f"Combinaciones  : {summ.get('n_evaluated_combinations')}/{summ.get('n_possible_combinations')} evaluadas "
+            f"({summ.get('n_failed_combinations')} fallidas) en {summ.get('total_time_seconds', 0):.2f}s")
+        if summ.get("best_overall"):
+            bo = summ["best_overall"]
+            add(f"Mejor Global   : {bo.get('model')} con {bo.get('n_features')} variables -> {bo.get('features')} "
+                f"(CV={_fmt(bo.get('cv_mean'))} ± {_fmt(bo.get('cv_std'))})")
+        if summ.get("best_by_model"):
+            add("Mejor por modelo:")
+            for mod, info in summ["best_by_model"].items():
+                add(f"     {mod:<18}: {info.get('n_features')} vars {info.get('features')} "
+                    f"-> CV={_fmt(info.get('cv_mean'))}")
+        if fs.get("ranking") is not None and not fs["ranking"].empty:
+            add("Top combinaciones evaluadas:")
+            top_show = fs["ranking"].head(5)
+            cols_show = [c for c in ["rank", "model", "n_features", "features", "cv_mean", "cv_std"] if c in top_show.columns]
+            add(top_show[cols_show].to_string(index=False, float_format=lambda v: f"{v:.4f}"))
+
     return "\n".join(lines)
 
 
@@ -257,6 +290,46 @@ def build_figures(pipe: "AutoPipeline") -> List[Tuple[str, Any]]:
         ax.set_title(title)
         fig.tight_layout()
         figures.append((title, fig))
+
+    # Gráficos de Feature Subset Search
+    if getattr(pipe, "feature_search_results_", None) is not None and not pipe.feature_search_results_.empty:
+        fs_df = pipe.feature_search_results_
+        usable_fs = fs_df[fs_df["status"].isin(["ok", "partial"])]
+        if not usable_fs.empty:
+            # 1. Rendimiento según número de variables
+            try:
+                fig_perf, ax_perf = plt.subplots(figsize=(7, 4))
+                for model_name, grp in usable_fs.groupby("model"):
+                    grp_max = grp.groupby("n_features")["cv_mean"].max()
+                    ax_perf.plot(grp_max.index, grp_max.values, marker="o", label=model_name)
+                ax_perf.set_xlabel("Número de variables")
+                ax_perf.set_ylabel(f"CV {pipe.metric_specs_[0].display}")
+                ax_perf.set_title("Rendimiento según cantidad de features")
+                ax_perf.legend(fontsize=8)
+                fig_perf.tight_layout()
+                figures.append(("Feature Search: Rendimiento vs Variables", fig_perf))
+            except Exception:
+                pass
+
+            # 2. Variables más recurrentes en mejores resultados
+            try:
+                n_top = max(1, min(len(usable_fs), max(5, int(len(usable_fs) * 0.25))))
+                top_combos = usable_fs.sort_values(
+                    "cv_mean",
+                    ascending=not pipe.metric_specs_[0].greater_is_better
+                ).head(n_top)
+                all_feats = [f for combo in top_combos["features"] for f in combo]
+                if all_feats:
+                    counts = pd.Series(all_feats).value_counts().sort_values(ascending=True)
+                    fig_rec, ax_rec = plt.subplots(figsize=(6, max(3.0, 0.3 * len(counts) + 1.0)))
+                    ax_rec.barh(counts.index.astype(str), counts.values, color="#2b5c8f")
+                    ax_rec.set_xlabel("Frecuencia en mejores combinaciones")
+                    ax_rec.set_title(f"Variables más recurrentes (Top {n_top})")
+                    fig_rec.tight_layout()
+                    figures.append(("Feature Search: Variables recurrentes", fig_rec))
+            except Exception:
+                pass
+
     return figures
 
 
@@ -308,11 +381,15 @@ def render_html(report: Dict[str, Any], figures: List[Tuple[str, str]], experime
              f"</head><body><h1>SynaptIX AutoML</h1><p class='note'>Experimento "
              f"{html.escape(experiment_id)}</p>"]
     for key, title in titles.items():
+        if key not in report:
+            continue
         value = report[key]
         if isinstance(value, pd.DataFrame) and "parametros" in value.columns:
             value = value.assign(parametros=value["parametros"].map(
                 lambda p: json.dumps(to_jsonable(p), ensure_ascii=False)))
         parts.append(f"<h2>{title}</h2>{_html_value(value)}")
+    if "feature_search" in report:
+        parts.append(f"<h2>Feature Subset Search</h2>{_html_value(report['feature_search'])}")
     if figures:
         parts.append("<h2>Gráficos</h2>")
         for title, encoded in figures:

@@ -118,6 +118,7 @@ class ExperimentRecord:
     ranking: List[Dict[str, Any]] = field(default_factory=list)
     tuning: Dict[str, Any] = field(default_factory=dict)
     ensemble: Dict[str, Any] = field(default_factory=dict)
+    feature_search: Dict[str, Any] = field(default_factory=dict)
     selected_model: str = ""
     validation: Dict[str, Any] = field(default_factory=dict)
     test_metrics: Dict[str, Any] = field(default_factory=dict)

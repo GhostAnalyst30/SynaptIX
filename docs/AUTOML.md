@@ -1,5 +1,8 @@
 # SynaptIX AutoML 2.0 — guía de usuario
 
+> **Versión actual: 0.3.2** — Feature Engineering, Calidad de Datos y Explicabilidad Extendida.
+> Ver [`CHANGELOG.md`](../CHANGELOG.md) para el historial completo.
+
 `sx.AutoPipeline` automatiza la experimentación de Machine Learning tabular
 sin sacrificar la metodología: el conjunto de prueba se separa antes de
 ajustar cualquier transformación, todo el preprocesamiento se reajusta dentro
@@ -146,9 +149,20 @@ existiendo como fachadas: los imports anteriores funcionan sin cambios.
 | `max_onehot_categories` | `20` | Categorías por variable; el resto se agrupa como *infrequent* |
 | `drop_constant` | `False` | Elimina constantes dentro de cada fold (opt-in) |
 | `feature_selection` | `None` | `variance`, `kbest`, `model` (dentro de cada fold) |
+| `feature_search` | `"none"` | `"none"`, `"exhaustive"`, `"random"`, `"forward"`, `"backward"`: búsqueda de subconjuntos de features por algoritmo *(v0.3.2)* |
+| `feature_search_min_features` | `1` | Mínimo de variables por subconjunto *(v0.3.2)* |
+| `feature_search_max_features` | `None` | Máximo de variables por subconjunto (None = todas) *(v0.3.2)* |
+| `feature_search_max_combinations` | `None` | Límite de combinaciones evaluadas por modelo *(v0.3.2)* |
+| `feature_search_strategy` | `"auto"` | Estrategia heurística cuando `feature_search="auto"` *(v0.3.2)* |
+| `feature_search_metric` | `"auto"` | Métrica para evaluar combinaciones ("auto" = métrica principal) *(v0.3.2)* |
+| `feature_search_n_jobs` | `None` | Paralelización de la búsqueda de subconjuntos *(v0.3.2)* |
 | `ensemble`, `ensemble_top_k` | `None`, `3` | `voting`, `stacking`, `blending` |
-| `explain` | `True` | Importancias y diagnósticos sobre el test |
+| `explain` | `True` | Importancias y diagnósticos sobre el test; el nombre `explain` se reserva para el método `explain()` *(v0.3.2)* |
 | `ignore_columns` | `None` | Columnas que no entran como features |
+| `associations` | `None` | Dict `{nombre: expresión}` para crear variables derivadas con un AST seguro (sin `eval()`); admite aritmética, `log`, `sqrt`, `exp`, `abs`, potencias y `where` *(v0.3.2)* |
+| `fe_handle_div_zero` | `"nan"` | Política cuando una expresión produce división por cero: `"nan"`, `"inf"`, `"zero"` o `"error"` *(v0.3.2, corregido)* |
+| `warning_strategy` | `"safe"` | `"none"` (solo diagnóstica), `"safe"`, `"aggressive"`: nivel de correcciones automáticas de calidad; solo aplica con filas de entrenamiento *(v0.3.2)* |
+| `warning_report` | `False` | Si `True`, añade `13_calidad_datos` a `report_dict()` *(v0.3.2)* |
 | `n_jobs`, `pre_dispatch` | `1`, `"2*n_jobs"` | Paralelismo de un solo nivel (CV o búsqueda) |
 | `memory_optimization` | `False` | One-hot disperso; desactiva el perfilado con polars |
 | `cache` | `False` | Cachea el preprocesamiento entre combinaciones (`joblib.Memory`) |
@@ -170,6 +184,44 @@ existiendo como fachadas: los imports anteriores funcionan sin cambios.
 (compatibilidad), `cv_score_`, `results_`, `test_score_`,
 `feature_importances_`, `model_importances_`, `coefficients_`,
 `diagnostics_`, `timings_`, `profiler_`, `experiment_`, `warnings_`, `notes_`.
+
+**Nuevos en v0.3.2:** `selected_features_`, `removed_features_`,
+`feature_selection_info_`, `feature_importance_` (importancia preferida:
+permutación si existe, si no la nativa), `feature_importance_source_`,
+`data_quality_report_`, `explain_enabled`.
+
+### Acceso a los datos usados en `fit` (v0.3.2)
+
+`AutoPipeline` conserva los datos exactos con los que se entrenó, sin las
+transformaciones internas del preprocesador (one-hot, escalado, imputación de
+los folds):
+
+- `X_train_` / `X_test_`: features con el índice original, incluidas las
+  variables derivadas de `associations` y las correcciones de
+  `warning_strategy`; nunca columnas de `ignore_columns`.
+- `y_train_` / `y_test_`: target alineado fila a fila con `X_train_` / `X_test_`.
+- `data_train_` / `data_test_`: `X_*` más la columna target.
+- `best_data_train_` / `best_data_test_`: solo `best_features_` más el target.
+- `data_` / `best_data_`: atajos que devuelven `(train, test)`; `data` es alias
+  de `data_`. Requieren haber llamado a `fit`.
+
+Si `test_size=None`, los conjuntos de prueba son DataFrames vacíos con las
+columnas esperadas. Los índices originales se conservan y train/test nunca se
+solapan.
+
+```python
+pipe = sx.AutoPipeline().fit(df, target="target")
+
+data_train, data_test = pipe.data_
+best_train, best_test = pipe.best_data_
+
+# Alias equivalente
+data_train, data_test = pipe.data
+
+# También accesibles como atributos
+pipe.data_train_, pipe.data_test_
+pipe.best_data_train_, pipe.best_data_test_
+```
 
 ### Métodos
 
@@ -295,12 +347,21 @@ tiempo y RSS por etapa (la memoria de los workers de joblib no se incluye).
 
 ---
 
-## 10. Explicabilidad
+## 10. Explicabilidad *(actualizado en v0.3.2)*
 
 - `feature_importances_`: importancia por permutación sobre el test,
   calculada con el pipeline completo (en columnas originales).
+- `feature_importance_`: importancia preferida — permutación si existe, en caso
+  contrario la nativa. `feature_importance_source_` indica cuál se usa.
 - `model_importances_`: importancias nativas (árboles) en las features
-  transformadas; `coefficients_` en modelos lineales.
+  transformadas; `coefficients_` en modelos lineales. Se calculan aunque
+  `explain=False` *(v0.3.2)*.
+- `selected_features_` / `removed_features_` / `feature_selection_info_`:
+  auditoría completa de qué columnas entran al modelo, cuáles se descartaron
+  y por qué *(v0.3.2)*.
+- `explain(df=None)`: método unificado que muestra importancias, diagnósticos
+  de error, calibración (Brier + curva de fiabilidad en clasificación binaria)
+  y SHAP local opcional. No reentrena nada *(v0.3.2)*.
 - `explain_shap(df)`: valores SHAP (requiere `synaptix[explain]`).
 - `diagnostics_`: en clasificación, matriz de confusión, métricas por
   clase y pares de clases más confundidos; en regresión, estadísticos de
@@ -314,14 +375,16 @@ efectos causales.
 
 ---
 
-## 11. Reportes y experimentos
+## 11. Reportes y experimentos *(actualizado en v0.3.2)*
 
-`report(plot=True, save=None)` imprime 12 secciones: dataset, tarea,
+`report(plot=True, save=None)` imprime hasta **13 secciones**: dataset, tarea,
 variables, calidad de datos, modelos evaluados, ranking, **validación
 (CV en train)**, **test (evaluado una vez)**, hiperparámetros,
-importancias, tiempos y advertencias metodológicas. Con
-`save="reporte.html"` genera un HTML autocontenido (gráficos en base64);
-con `save="reporte.json"` exporta los datos y el registro del experimento.
+importancias, tiempos, advertencias metodológicas y —si
+`warning_report=True`— **`13_calidad_datos`** con el resumen estructurado de
+`data_quality_report_` *(v0.3.2)*. Con `save="reporte.html"` genera un HTML
+autocontenido (gráficos en base64); con `save="reporte.json"` exporta los
+datos y el registro del experimento.
 
 `experiment_` (`ExperimentRecord`) guarda id, fecha, configuración
 completa, versiones (Python, synaptix y dependencias), semilla, forma y

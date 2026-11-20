@@ -42,6 +42,16 @@ print(resultado.to_frame())                # métrica | train | test | diferenci
 
 `fit_evaluate(..., test_size=..., metrics=[...])` existe en todos los modelos: supervisados, clustering, PCA, redes neuronales (split temporal en `LSTMNet`) y agentes de refuerzo (donde `test_size` es la fracción de episodios de evaluación).
 
+## Novedades en v0.3.1 — Feature Engineering, Calidad de Datos y Explicabilidad
+
+- **Variables derivadas** (`associations`) evaluadas con un AST seguro (sin `eval()`): aritmética, `log`, `sqrt`, `exp`, `abs`, potencias y `where`. Las correcciones que estiman parámetros se ajustan **solo con las filas de entrenamiento** y se aplican después a train y test.
+- **`fe_handle_div_zero`** corregido: `nan`, `inf`, `zero` y `error` funcionan ahora igual en `fit` y en `predict`.
+- **`AutoPipeline.explain(df=None)`**: importancias (permutación en test, nativas y coeficientes), diagnósticos de error, calibración (Brier + curva de fiabilidad en binario) y SHAP local opcional. No reentrena nada.
+- **`selected_features_`, `removed_features_`, `feature_selection_info_`** y **`feature_importance_` / `feature_importance_source_`** para auditar la selección de variables del modelo final.
+- **`warning_report=True`** añade la sección `13_calidad_datos` a `report_dict()`; **`data_quality_report_`** con resumen estructurado de problemas detectados.
+- Corrección metodológica: `warning_strategy` ya no analiza ni imputa con el dataset completo antes del holdout.
+- Guía: [`docs/AUTOML.md`](docs/AUTOML.md) · Cambios: [`CHANGELOG.md`](CHANGELOG.md).
+
 ## Novedades en v0.3.0 — AutoML Engine 2.0
 
 - `AutoPipeline` reescrito sobre el nuevo subpaquete `synaptix.automl`, **sin fuga de datos**: el test se separa sobre los datos crudos y el preprocesamiento se reajusta en cada fold (la versión anterior ajustaba la limpieza con todo el dataset).
@@ -112,6 +122,62 @@ pipe.experiment_.to_json("experimento.json")
 ```
 
 Guía completa (arquitectura, garantías metodológicas, motores de datos y benchmarks): [`docs/AUTOML.md`](docs/AUTOML.md).
+
+### Feature Subset Search: Búsqueda sistemática de subconjuntos de variables por modelo
+
+`AutoPipeline` permite evaluar y optimizar sistemáticamente combinaciones de variables de forma independiente para cada algoritmo candidato:
+
+```python
+import synaptix as sx
+
+pipe = sx.AutoPipeline(
+    mode="balanced",
+    feature_search="exhaustive",       # "exhaustive", "random", "forward", "backward" o "auto"
+    feature_search_min_features=1,     # tamaño mínimo de subconjunto
+    feature_search_max_features=5,     # tamaño máximo (o None para todas)
+    feature_search_strategy="auto",
+    cv=5,
+    scoring="auto",
+    n_jobs=-1,
+    random_state=42,
+)
+
+pipe.fit(df, target="target")
+
+print("Mejor modelo:", pipe.best_name_)
+print("Mejor subconjunto:", pipe.best_features_)
+print("Mejor puntuación CV:", pipe.best_score_)
+
+# Consultar rankings y resultados completos
+print(pipe.feature_search_ranking_.head(10))
+print(pipe.feature_search_summary_)
+
+# En inferencia, solo requiere las columnas ganadoras (compatible con pandas y polars)
+predicciones = pipe.predict(df_nuevo)
+```
+
+### Acceso a los datos usados en el entrenamiento
+
+`AutoPipeline` expone los datos exactos del `fit` con sus índices originales,
+incluidas las variables derivadas y las correcciones de `warning_strategy`,
+pero sin las matrices one-hot, escaladas o imputadas del preprocesador:
+
+```python
+pipe = sx.AutoPipeline().fit(df, target="target")
+
+data_train, data_test = pipe.data_          # features + target
+best_train, best_test = pipe.best_data_     # solo best_features_ + target
+data_train, data_test = pipe.data           # alias de data_
+
+pipe.X_train_, pipe.X_test_                 # features
+pipe.y_train_, pipe.y_test_                 # target alineado
+pipe.data_train_, pipe.data_test_           # DataFrames completos
+pipe.best_data_train_, pipe.best_data_test_ # subconjunto ganador + target
+```
+
+Si `test_size=None`, `data_test_` y `best_data_test_` son DataFrames vacíos
+con las columnas correspondientes. `data_`/`best_data_` requieren haber
+llamado a `fit`.
 
 También hay un `Pipeline` declarativo por pasos, donde el sistema rellena los parámetros de cada paso:
 

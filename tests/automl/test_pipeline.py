@@ -236,11 +236,19 @@ def test_legacy_api_and_attributes(clf_df, tmp_path):
 
 def test_pickle_has_no_raw_data(clf_df):
     pipe = sx.AutoPipeline(**FAST, models=["logistic"], memory_optimization=True).fit(clf_df, "y")
+    state = pipe.__getstate_for_pickle__()
+    for name in pipe._DATA_ATTRIBUTES:
+        assert name not in state
+    # Puede haber metadatos tabulares (ranking, importancias), pero ningún
+    # DataFrame debe contener las columnas de entrenamiento ni el target.
+    raw_columns = set(pipe.feature_columns_) | {pipe.target_}
+    assert not any(
+        isinstance(value, pd.DataFrame) and raw_columns <= set(value.columns)
+        for value in state.values()
+    )
     blob = pickle.dumps(pipe)
     for value in clf_df["a"].head(20):
         assert np.float64(value).tobytes() not in blob
-    assert not any(isinstance(v, pd.DataFrame) and len(v) == pipe.n_test_
-                   for v in vars(pipe).values())
 
 
 def test_memory_optimization_uses_sparse(clf_df):

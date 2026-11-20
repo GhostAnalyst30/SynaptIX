@@ -1,5 +1,6 @@
 """Model Selection Engine: registro de candidatos, evaluación y ranking."""
 
+from .feature_subset_search import FeatureSubsetSearch, count_combinations
 from .ranking import (
     CandidateResult,
     build_ranking,
@@ -19,6 +20,8 @@ from .registry import (
 )
 
 __all__ = [
+    "FeatureSubsetSearch",
+    "count_combinations",
     "CandidateResult",
     "build_ranking",
     "evaluate_candidate",

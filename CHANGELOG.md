@@ -1,6 +1,32 @@
 # Registro de cambios
 
-## Sin publicar — AutoPipeline: feature engineering, calidad y explicabilidad
+## 0.3.2 — Feature Subset Search en AutoPipeline
+
+### Añadido
+
+- **Feature Subset Search por algoritmo**: búsqueda sistemática de subconjuntos de variables independiente para cada modelo de Machine Learning (`feature_search="exhaustive"`, `"random"`, `"forward"`, `"backward"`, `"auto"`).
+- Nuevos parámetros en `AutoPipeline`:
+  - `feature_search`: controla la activación y estrategia de búsqueda.
+  - `feature_search_min_features`: tamaño mínimo de subconjunto (default: 1).
+  - `feature_search_max_features`: tamaño máximo de subconjunto (default: None).
+  - `feature_search_max_combinations`: límite de combinaciones evaluadas por modelo.
+  - `feature_search_strategy`: estrategia heurística adaptativa ("auto").
+  - `feature_search_metric`: métrica de optimización del subconjunto.
+  - `feature_search_n_jobs`: paralelismo controlado sin explosión anidada.
+- Nuevos atributos públicos en `AutoPipeline`:
+  - `pipe.best_features_`: variables del subconjunto ganador.
+  - `pipe.best_model_`: estimador final ajustado.
+  - `pipe.best_score_`: puntuación media en validación cruzada.
+  - `pipe.feature_search_results_`: DataFrame con todas las combinaciones evaluadas y sus métricas.
+  - `pipe.feature_search_ranking_`: ranking ordenado de combinaciones por rendimiento.
+  - `pipe.feature_search_summary_`: resumen estadístico de la búsqueda.
+- Compatibilidad total con inferencia (`predict`): no exige columnas descartadas por el modelo ganador.
+- Pruning automático de variables derivadas (`associations`): solo evalúa en inferencia las dependencias necesarias para las features ganadoras.
+- Compatibilidad nativa con motores pandas y polars.
+- Visualización y reportes integrados en `pipe.report()` (consola, HTML y gráficos de rendimiento vs cantidad de variables y recurrencia de variables).
+- **Acceso a los datos usados en `fit`**: nuevos atributos `X_train_`, `X_test_`, `y_train_`, `y_test_`, `data_train_`, `data_test_`, `best_data_train_` y `best_data_test_`, más los atajos `pipe.data_` / `pipe.best_data_` (y el alias `pipe.data`). Conservan los índices originales, incluyen `associations` y las correcciones de `warning_strategy`, excluyen `ignore_columns` y no exponen la matriz transformada por one-hot/escalado/imputación. Con `test_size=None`, los conjuntos de prueba son DataFrames vacíos con sus columnas.
+
+## 0.3.1 — Feature Engineering, Calidad de Datos y Explicabilidad Extendida
 
 ### Corregido (metodología)
 
@@ -28,6 +54,13 @@
   selección de variables del modelo final.
 - `explain_shap()` sigue disponible; `model_importances_` y `coefficients_` se
   calculan aunque `explain=False`.
+- Variables derivadas (`associations`) evaluadas con un AST seguro (sin `eval()`):
+  aritmética, `log`, `sqrt`, `exp`, `abs`, potencias y `where`. La imputación
+  y correcciones que estiman parámetros se ajustan **solo con las filas de
+  entrenamiento**.
+- `warning_report=True` añade la sección `13_calidad_datos` a `report_dict()`.
+- `warning_strategy="safe"` y `"aggressive"` para controlar correcciones automáticas.
+- `data_quality_report_` con resumen estructurado de problemas detectados.
 
 ### Cambios de API
 

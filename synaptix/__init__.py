@@ -35,7 +35,7 @@ Ejemplo rápido
 >>> model.evaluate(X_test, y_test)
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 __author__ = "Emmanuel Ascendra"
 
 from . import (

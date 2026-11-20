@@ -42,7 +42,7 @@ def check(name):
 def test_import():
     import synaptix as sx
 
-    assert sx.__version__ == "0.3.1"
+    assert sx.__version__ == "0.3.2"
     assert hasattr(sx, "supervised")
     assert hasattr(sx, "preprocessing")
 
